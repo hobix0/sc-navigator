@@ -1,99 +1,136 @@
-# ◈ SC Navigator
+# SC Navigator
 
-Community-Dashboard für Star Citizen — alle wichtigen Tools auf einen Blick.
+Ein modernes, minimales Dashboard für **Star Citizen** Tools, Trade-Routen, Mining-Refinery-Timer, Bounty-Tracker und Hangar-Übersicht. Glassmorphism + Tailwind, läuft als reine HTML/JS-Anwendung — kein Build, kein Server, keine Abhängigkeiten zum Installieren.
 
-**Live:** https://hobix0.github.io/SC-Navigator/
+![SC Navigator](docs/screenshot.png)
 
----
+## Features
 
-## ✨ Features
+- **Tool-Verzeichnis** — 17 Community-Tools (Erkul, UEXcorp, SC Trade Tools, Regolith, StarMap, Spectrum, Pledge Store, Star Hangar, Wiki, …) mit Suche, Kategorie-Filter, Sortierung und Favoriten (in `localStorage`)
+- **Server Status** — Ping/Last für EU/US/APAC inkl. PTU
+- **Hangar-Übersicht** — Schiffsauswahl mit Hülle/Fuel/Schilden
+- **Trade Routes** — Top-Profit-Routen, sortierbar nach Profit/Risiko/Name
+- **Refinery Jobs** — Live-Countdown für laufende Mining-Refining-Aufträge
+- **Bounty Tracker** — Missionen annehmen/ablehnen, Reward-Summe
+- **Watchlist** — Schiffspreise (Pledge / Star Hangar) mit Alerts
+- **Events & Patch** — Aktive Events (XenoThreat, Jumptown, …) + Patch Highlights
+- **Tweaks-Panel** — Glass-Blur, Hintergrundbild, Light/Dark live anpassbar
+- **Voll auf Deutsch**
 
-### 🎨 Design
-- **Glasmorphism UI** — Transparente, moderne Benutzeroberfläche
-- **Dark Theme** — Dunkler Hintergrund mit Blau/Cyan Accenten
-- **Responsive Layout** — Optimiert für Desktop & Mobile
-- **Smooth Animations** — Hover-Effekte und sanfte Übergänge
+## Tech-Stack
 
-### 📑 Tab-System
-Die wichtigsten Star Citizen Ressourcen sind in 4 Kategorien organisiert:
+- React 18 (UMD, kein Build-Tool)
+- Babel Standalone für JSX im Browser
+- Tailwind CSS via CDN
+- Plus Jakarta Sans + JetBrains Mono (Google Fonts)
 
-| Tab | Inhalt |
-|-----|--------|
-| 🌐 **Offiziell** | Roberts Space Industries, Spectrum Forum |
-| 🛠️ **Tools** | Starcitizen.tools, FleetYards, SC Cargo |
-| 👥 **Community** | Wiki, Reddit, Discord |
-| 📋 **Info & Status** | Server Status, Roadmap, Crowdfunding |
+## Quickstart
 
-### 🔜 Geplante Features
-- **Sternenkarte** — Interaktive 3D Star Map mit Planet-POIs
-- **Item-Datenbank** — Gegenstände, Waffen, Ausrüstung mit APIs
-- **Calculators** — Fracht, Routen, Blueprints, Schiffsteile
-- **Flottenverwaltung** — Eigene Schiffe, Loadouts, Crew
-- **Notizen-System** — Zu Locations, Items, Planeten
-
----
-
-## 🚀 Lokale Entwicklung
+### Lokal öffnen
 
 ```bash
-# 1. Klonen
-git clone https://github.com/Hobix0/SC-Navigator.git
-cd SC-Navigator
-
-# 2. Frontend starten
-cd frontend
-npm install
-npm run dev
-# → http://localhost:5174 (oder ähnlich)
+git clone https://github.com/<dein-user>/sc-navigator.git
+cd sc-navigator
 ```
 
----
+Wegen der `<script src="…jsx">`-Einbindung funktioniert ein Doppelklick auf `index.html` in den meisten Browsern **nicht** (CORS für lokale Dateien). Stattdessen einfach einen Mini-Webserver starten:
 
-## 🔗 Neue Website hinzufügen
+**Python 3** (vorinstalliert auf macOS / Linux):
+```bash
+python3 -m http.server 8000
+```
 
-In `frontend/src/data/websites.js` einfach zu einem der Kategorien-Arrays hinzufügen:
+**Node.js**:
+```bash
+npx serve .
+```
+
+**PHP**:
+```bash
+php -S localhost:8000
+```
+
+Dann im Browser öffnen: <http://localhost:8000>
+
+### Deployment
+
+Es ist ein statisches HTML-Projekt — also überall lauffähig:
+
+| Plattform | Anleitung |
+|-----------|-----------|
+| **GitHub Pages** | Settings → Pages → Branch `main`, Folder `/` |
+| **Netlify** | Repo verbinden, Build Command leer, Publish dir `.` |
+| **Vercel** | Repo importieren, Framework `Other` |
+| **Cloudflare Pages** | Repo verbinden, Build Output Directory `.` |
+
+## Projekt-Struktur
+
+```
+.
+├── index.html           # Entry-Point, Tailwind-Config & Theme-CSS
+├── starfield.js         # (legacy, nicht mehr genutzt — schlichter Look)
+├── tweaks-panel.jsx     # Tweaks-UI-Helpers
+├── icons.jsx            # SVG-Icon-Set
+├── data.jsx             # Tool-Liste, Schiffe, Trade-Routes etc.
+└── app-bundle.jsx       # Alle Widgets + App-Komponente
+```
+
+> **Warum eine Bundle-Datei?** Babel Standalone hat bei vielen kleinen `<script type="text/babel">`-Tags gelegentlich Race-Conditions beim Laden. Daher sind Widgets, Tools und App in `app-bundle.jsx` zusammengefasst.
+
+## Eigene Daten einpflegen
+
+Alle Mock-Daten stehen zentral in `data.jsx` — einfach das Objekt `SCData` erweitern:
 
 ```js
-{
-  id: 'eindeutige-id',
-  name: 'Website Name',
-  url: 'https://...',
-  desc: 'Kurze Beschreibung',
-  icon: '🎯'  // Emoji-Icon
-}
+const TOOLS = [
+  { id: 'meinTool', name: 'Mein Tool', cat: 'Trade', url: 'https://…',
+    desc: '…', icon: 'Trade', tag: 'Trade', color: '#3B82F6', popularity: 80 },
+  …
+];
 ```
 
----
+Verfügbare Icons siehe `icons.jsx` (`Icon.<Name>`).
 
-## 🛠️ Tech Stack
+## Tweaks bearbeiten
 
-- **Frontend:** React 18 + Vite
-- **Styling:** Tailwind CSS v3 mit Custom Glasmorphism-Komponenten
-- **Fonts:** Orbitron + Outfit (Google Fonts)
-- **Design Pattern:** Glasmorphism mit backdrop-blur & transparency
-- **Deploy:** GitHub Actions → GitHub Pages
+Standardwerte in `app-bundle.jsx`:
 
----
-
-## 📝 Projektstruktur
-
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── Header.jsx          # Header mit Logo
-│   │   ├── TabNav.jsx          # Tab-Navigation
-│   │   └── WebsiteCard.jsx     # Einzelne Website-Card
-│   ├── data/
-│   │   └── websites.js         # Alle SC-Websites
-│   ├── App.jsx                 # Hauptkomponente
-│   ├── index.css               # Tailwind + Custom Styles
-│   └── main.jsx                # Entry Point
-├── package.json
-├── tailwind.config.js          # Tailwind Konfiguration
-└── vite.config.js              # Vite Konfiguration
+```js
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "blur": 14,
+  "background": "none",
+  "dark": true
+}/*EDITMODE-END*/;
 ```
 
----
+## Browser-Kompatibilität
 
-*Not affiliated with Cloud Imperium Games — Community Project*
+Getestet in aktuellem Chrome / Firefox / Safari / Edge. Nutzt `backdrop-filter` (Glasmorphism) — ältere Browser fallen auf eine deckende Surface zurück.
+
+## Roadmap
+
+- [ ] Echte API-Anbindung (UEXcorp, RSI Status, …)
+- [ ] Schiffe direkt aus Erkul-Build importieren
+- [ ] Refinery-Jobs aus Regolith importieren
+- [ ] Org-Login via Spectrum SSO
+- [ ] PWA / Offline-Cache
+- [ ] Mobile-Layout finalisieren
+
+## Disclaimer
+
+Inoffizielles Fan-Projekt. **Star Citizen** ist eine Marke von [Cloud Imperium Games](https://cloudimperiumgames.com/). Dieses Repo ist nicht mit CIG affiliiert. Alle Daten sind Demo-Werte zur Veranschaulichung der UI.
+
+## Lizenz
+
+[MIT](LICENSE) — frei nutzbar, mit Namensnennung.
+
+## Mitwirken
+
+Pull Requests willkommen! Bei größeren Änderungen vorher bitte ein Issue eröffnen.
+
+```bash
+git checkout -b feature/dein-feature
+# ... Änderungen
+git commit -m "feat: kurze Beschreibung"
+git push origin feature/dein-feature
+```

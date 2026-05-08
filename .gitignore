@@ -1,22 +1,36 @@
-# ── Node.js ──────────────────────────────────────────────────────────────────
-node_modules/
-
-# ── Vite Build Output ─────────────────────────────────────────────────────────
-frontend/dist/
-frontend/.vite/
-
-# ── Umgebungsvariablen (nicht ins Repo!) ──────────────────────────────────────
-.env
-.env.local
-.env.production
-
-# ── Backend Daten (werden lokal generiert) ────────────────────────────────────
-backend/data/
-
-# ── Betriebssystem ────────────────────────────────────────────────────────────
+# OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# ── Logs ─────────────────────────────────────────────────────────────────────
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node (falls jemand `npx serve` o.ä. nutzt)
+node_modules/
+.npm
+.cache/
+
+# Build output (falls später ein Bundler dazukommt)
+dist/
+build/
+.parcel-cache/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Local-only scratch
+scraps/
+uploads/
