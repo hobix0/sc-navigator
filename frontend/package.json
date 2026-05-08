@@ -1,6 +1,7 @@
 {
   "name": "sc-navigator-frontend",
   "version": "1.0.0",
+  "description": "SC Navigator - Star Citizen Community Dashboard",
   "private": true,
   "type": "module",
   "scripts": {

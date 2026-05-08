@@ -1,8 +1,22 @@
+# ── Node.js ──────────────────────────────────────────────────────────────────
 node_modules/
-dist/
+
+# ── Vite Build Output ─────────────────────────────────────────────────────────
+frontend/dist/
+frontend/.vite/
+
+# ── Umgebungsvariablen (nicht ins Repo!) ──────────────────────────────────────
 .env
 .env.local
-backend/data/fleet.json
-*.log
+.env.production
+
+# ── Backend Daten (werden lokal generiert) ────────────────────────────────────
+backend/data/
+
+# ── Betriebssystem ────────────────────────────────────────────────────────────
 .DS_Store
-.vite/
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*

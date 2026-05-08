@@ -1,25 +1,27 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// Vite Konfiguration
+//
+// Wichtig: VITE_BASE_URL wird vom GitHub Actions Workflow gesetzt,
+// z.B. /SC-Navigator/ — lokal bleibt der Wert '/' damit alles normal läuft.
+// ──────────────────────────────────────────────────────────────────────────────
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// VITE_BASE_URL wird automatisch vom GitHub Actions Workflow gesetzt,
-// z.B. /sc-navigator/ – lokal bleibt es '/'
 const base = process.env.VITE_BASE_URL || '/'
 
 export default defineConfig({
   plugins: [react()],
+
+  // Base-URL für alle Asset-Pfade
   base,
+
+  // Dev-Server: Proxied /api und /proxy Anfragen ans Backend
   server: {
     port: 5173,
     proxy: {
-      // In dev mode, proxy /proxy/* calls to the backend
-      '/proxy': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
+      '/api':   { target: 'http://localhost:3001', changeOrigin: true },
+      '/proxy': { target: 'http://localhost:3001', changeOrigin: true },
     },
   },
 })
