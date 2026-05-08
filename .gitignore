@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+backend/data/fleet.json
+*.log
+.DS_Store
+.vite/
