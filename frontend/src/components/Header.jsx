@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { fetchRSIStatus } from '../api/index.js'
 
 const TABS = [
-  { id: 'dashboard',    label: 'Dashboard'  },
+  { id: 'dashboard',    label: 'Dashboard'   },
+  { id: 'starmap',      label: 'Sternenkarte' },
   { id: 'commodities',  label: 'Commodities' },
   { id: 'fleet',        label: 'Fleet'       },
   { id: 'links',        label: 'Quick Links' },

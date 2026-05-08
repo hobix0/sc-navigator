@@ -10,7 +10,6 @@ Ein Community-Dashboard für Star Citizen – gebaut für Spieler, die ihre Info
 - 🗺️ **Quick Links** – Alle wichtigen Tools kategorisiert auf einen Blick
 - 🔄 **Data Sync** – Backend speichert Flotten-/Notizendaten für alle Freunde gemeinsam
 
-
 ---
 
 ## Tech Stack
