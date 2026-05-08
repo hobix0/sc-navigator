@@ -1,152 +1,143 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// Header Komponente
+// Header.jsx — Navigationsleiste im VORTEX-Stil
 //
-// Zeigt:
-//   - SC Navigator Logo (links)
-//   - Tab-Navigation (Mitte) — derzeit nur "Schnellzugriff" aktiv
-//   - Live-Uhr + Server-Status Badge (rechts)
+// Layout (exakt wie VORTEX):
+//   [Logo links] ── [Tab-Navigation Mitte] ── [Uhr + Status rechts]
 //
-// Props:
-//   activeTab    (string)   → ID des aktuell aktiven Tabs
-//   setActiveTab (function) → Callback um Tab zu wechseln
+// Der aktive Tab wird mit orangem Hintergrund hervorgehoben.
+// Inaktive/geplante Tabs werden ausgegraut mit "SOON" Badge angezeigt.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from 'react'
 
-// ── Tab-Definitionen ──────────────────────────────────────────────────────────
-// Tabs mit 'comingSoon: true' werden als deaktiviert angezeigt (Roadmap-Vorschau)
+// ── Tab-Konfiguration ─────────────────────────────────────────────────────────
+// Neue Tabs hinzufügen: active: true setzen wenn die Komponente bereit ist
 const TABS = [
-  { id: 'quicklinks',  label: 'Schnellzugriff', active: true },
-  { id: 'starmap',     label: 'Sternenkarte',   active: false, comingSoon: true },
-  { id: 'items',       label: 'Item-DB',         active: false, comingSoon: true },
-  { id: 'calculator',  label: 'Calculators',     active: false, comingSoon: true },
-  { id: 'fleet',       label: 'Flotte',          active: false, comingSoon: true },
+  { id: 'quicklinks',  label: 'Schnellzugriff', available: true  },
+  { id: 'starmap',     label: 'Sternenkarte',   available: false },
+  { id: 'items',       label: 'Item-DB',         available: false },
+  { id: 'calculator',  label: 'Calculators',     available: false },
+  { id: 'fleet',       label: 'Flotte',          available: false },
 ]
 
 export default function Header({ activeTab, setActiveTab }) {
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [time, setTime] = useState('')            // Aktuelle Uhrzeit als String
-  const [serverOk, setServerOk] = useState(true)  // RSI Server Status
+  const [time, setTime]       = useState('')
+  const [serverOk, setServer] = useState(null) // null = lädt noch
 
-  // ── Live-Uhr ───────────────────────────────────────────────────────────────
-  // Aktualisiert jede Sekunde, wird beim Unmount aufgeräumt
+  // Live-Uhr: aktualisiert jede Sekunde
   useEffect(() => {
     const tick = () => {
       const d = new Date()
-      const pad = n => String(n).padStart(2, '0')
-      setTime(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`)
+      const p = n => String(n).padStart(2, '0')
+      setTime(`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`)
     }
     tick()
     const id = setInterval(tick, 1000)
-    return () => clearInterval(id) // Cleanup beim Unmount
-  }, [])
-
-  // ── Server Status Check ────────────────────────────────────────────────────
-  // Prüft den RSI-Server-Status einmal beim Mount und dann alle 60 Sekunden
-  useEffect(() => {
-    const check = async () => {
-      try {
-        // Versucht Backend-Proxy, fällt auf direkten Call zurück
-        const res = await fetch('/proxy/rsi-status')
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        const indicator = data?.status?.indicator ?? 'none'
-        setServerOk(indicator === 'none' || indicator === 'operational')
-      } catch {
-        // Bei Fehler (z.B. kein Backend) Status unbekannt → gilt als "ok"
-        setServerOk(true)
-      }
-    }
-    check()
-    const id = setInterval(check, 60_000)
     return () => clearInterval(id)
   }, [])
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  return (
-    <header style={styles.header}>
-      {/* Innerer Container mit max. Breite */}
-      <div style={styles.inner}>
+  // Server-Status: prüft RSI Status-API alle 60 Sekunden
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const r = await fetch('/proxy/rsi-status')
+        const d = await r.json()
+        const ind = d?.status?.indicator ?? 'none'
+        setServer(ind === 'none' || ind === 'operational')
+      } catch {
+        setServer(true) // Kein Backend = ignorieren
+      }
+    }
+    check()
+    const id = setInterval(check, 60000)
+    return () => clearInterval(id)
+  }, [])
 
-        {/* Logo ────────────────────────────────────────────────────────────── */}
-        <div style={styles.logo}>
-          {/* Kleines Emblem-Icon */}
-          <div style={styles.logoIcon}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <circle cx="9" cy="9" r="8" stroke="#00d4ff" strokeWidth="1.2" opacity="0.6"/>
-              <circle cx="9" cy="9" r="4" stroke="#00d4ff" strokeWidth="1" opacity="0.8"/>
-              <circle cx="9" cy="9" r="1.5" fill="#00d4ff"/>
-              {/* Kleine Linie links */}
-              <line x1="1" y1="9" x2="4.5" y2="9" stroke="#00d4ff" strokeWidth="0.8" opacity="0.5"/>
-              {/* Kleine Linie rechts */}
-              <line x1="13.5" y1="9" x2="17" y2="9" stroke="#00d4ff" strokeWidth="0.8" opacity="0.5"/>
-            </svg>
-          </div>
-          <span style={styles.logoText}>SC Navigator</span>
+  return (
+    <header style={S.wrap}>
+      <div style={S.inner}>
+
+        {/* ── Logo (wie "VORTEX" im Design) ────────────────────────────── */}
+        <div style={S.logo}>
+          {/* Kleines Ring-Icon */}
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="9.5" stroke="#FF6B2B" strokeWidth="1.2" opacity="0.7"/>
+            <circle cx="11" cy="11" r="5"   stroke="#FF6B2B" strokeWidth="1" opacity="0.9"/>
+            <circle cx="11" cy="11" r="2"   fill="#FF6B2B"/>
+            <line x1="1.5" y1="11" x2="5.5"  y2="11" stroke="#FF6B2B" strokeWidth="0.9" opacity="0.5"/>
+            <line x1="16.5" y1="11" x2="20.5" y2="11" stroke="#FF6B2B" strokeWidth="0.9" opacity="0.5"/>
+          </svg>
+          <span style={S.logoText}>SC NAVIGATOR</span>
         </div>
 
-        {/* Tab-Navigation ──────────────────────────────────────────────────── */}
-        <nav style={styles.nav}>
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              style={styles.tab(activeTab === tab.id, tab.comingSoon)}
-              onClick={() => !tab.comingSoon && setActiveTab(tab.id)}
-              title={tab.comingSoon ? 'Coming Soon' : tab.label}
-            >
-              {tab.label}
-              {/* "Soon" Badge für geplante Tabs */}
-              {tab.comingSoon && (
-                <span style={styles.soonBadge}>soon</span>
-              )}
-            </button>
-          ))}
+        {/* ── Tab-Navigation ───────────────────────────────────────────── */}
+        <nav style={S.nav}>
+          {TABS.map(tab => {
+            const isActive   = activeTab === tab.id
+            const isDisabled = !tab.available
+
+            return (
+              <button
+                key={tab.id}
+                style={S.tab(isActive, isDisabled)}
+                onClick={() => tab.available && setActiveTab(tab.id)}
+                title={isDisabled ? 'In Entwicklung' : tab.label}
+              >
+                {tab.label}
+                {/* "SOON" Badge für geplante Features */}
+                {isDisabled && (
+                  <span style={S.soonBadge}>SOON</span>
+                )}
+              </button>
+            )
+          })}
         </nav>
 
-        {/* Rechte Seite: Uhr + Server Status ──────────────────────────────── */}
-        <div style={styles.right}>
-          {/* Live-Uhr */}
-          <span style={styles.clock}>{time}</span>
+        {/* ── Rechts: Uhr + Server Status ──────────────────────────────── */}
+        <div style={S.right}>
 
-          {/* Server Status Badge — klickbar → öffnet RSI Status-Seite */}
+          {/* Live-Uhrzeit */}
+          {time && (
+            <span style={S.clock}>{time}</span>
+          )}
+
+          {/* Server Status Pill — klickbar → RSI Status Seite */}
           <a
             href="https://status.robertsspaceindustries.com"
             target="_blank"
             rel="noopener noreferrer"
-            style={styles.statusBadge(serverOk)}
+            style={S.status(serverOk)}
           >
-            {/* Pulsierender Dot */}
-            <span style={styles.statusDot(serverOk)} />
-            {serverOk ? 'SERVERS UP' : 'DEGRADED'}
+            <span style={S.statusDot(serverOk)} />
+            {serverOk === null ? 'CHECKING' : serverOk ? 'SERVERS UP' : 'DEGRADED'}
           </a>
-        </div>
 
+        </div>
       </div>
     </header>
   )
 }
 
-// ── Inline Styles ─────────────────────────────────────────────────────────────
-// Inline Styles hier wegen fehlender CSS-Datei für Komponenten-spezifische Styles
-const styles = {
-  header: {
+// ── Styles ────────────────────────────────────────────────────────────────────
+const S = {
+  wrap: {
     position: 'sticky',
     top: 0,
-    zIndex: 100,
-    background: 'rgba(2, 8, 18, 0.85)',
-    backdropFilter: 'blur(24px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    zIndex: 200,
+    background: 'rgba(5, 10, 14, 0.96)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
     borderBottom: '1px solid rgba(255,255,255,0.07)',
   },
 
   inner: {
-    maxWidth: '1440px',
-    margin: '0 auto',
-    padding: '0 1.5rem',
-    height: '60px',
     display: 'flex',
     alignItems: 'center',
     gap: '2rem',
+    padding: '0 1.5rem',
+    height: '56px',
+    maxWidth: '1600px',
+    margin: '0 auto',
   },
 
   logo: {
@@ -156,68 +147,53 @@ const styles = {
     flexShrink: 0,
   },
 
-  logoIcon: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
-    background: 'rgba(0, 212, 255, 0.08)',
-    border: '1px solid rgba(0, 212, 255, 0.2)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   logoText: {
     fontFamily: "'Orbitron', monospace",
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#e8f4fd',
-    letterSpacing: '0.06em',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#eef3f5',
+    letterSpacing: '0.12em',
   },
 
   nav: {
     display: 'flex',
-    gap: '2px',
+    alignItems: 'center',
+    gap: '3px',
     flex: 1,
   },
 
-  // Gibt Style zurück basierend auf active/disabled Zustand
+  // Gibt Tab-Style zurück abhängig von Zustand
   tab: (isActive, isDisabled) => ({
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 14px',
-    borderRadius: '8px',
-    fontFamily: "'Orbitron', monospace",
-    fontSize: '9px',
-    fontWeight: '500',
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
+    gap: '7px',
+    padding: '6px 16px',
+    borderRadius: '6px',
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '12px',
+    fontWeight: isActive ? '600' : '400',
     cursor: isDisabled ? 'default' : 'pointer',
     border: 'none',
+    // Aktiver Tab: orange (wie im VORTEX "Mods" Tab)
     background: isActive
-      ? 'rgba(0, 212, 255, 0.1)'
+      ? '#FF6B2B'
       : 'transparent',
     color: isActive
-      ? '#00d4ff'
+      ? '#fff'
       : isDisabled
-        ? 'rgba(100, 140, 180, 0.35)'
-        : 'rgba(148, 180, 210, 0.7)',
-    borderBottom: isActive
-      ? '2px solid #00d4ff'
-      : '2px solid transparent',
-    transition: 'all 0.2s ease',
+        ? 'rgba(130, 160, 175, 0.35)'
+        : 'rgba(185, 205, 215, 0.7)',
+    transition: 'all 0.15s ease',
   }),
 
   soonBadge: {
     fontSize: '8px',
     padding: '1px 5px',
-    borderRadius: '4px',
-    background: 'rgba(124, 58, 237, 0.2)',
-    color: '#a78bfa',
-    border: '1px solid rgba(124,58,237,0.3)',
+    borderRadius: '3px',
+    background: 'rgba(255,255,255,0.07)',
+    color: 'rgba(130, 160, 175, 0.45)',
     fontFamily: "'Orbitron', monospace",
-    letterSpacing: '0.05em',
+    letterSpacing: '0.06em',
   },
 
   right: {
@@ -230,35 +206,35 @@ const styles = {
 
   clock: {
     fontFamily: "'Orbitron', monospace",
-    fontSize: '12px',
-    color: 'rgba(148, 180, 210, 0.6)',
+    fontSize: '11px',
+    color: 'rgba(130, 160, 175, 0.55)',
     letterSpacing: '0.06em',
   },
 
-  statusBadge: (ok) => ({
+  status: (ok) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: '7px',
-    padding: '5px 12px',
+    padding: '4px 12px',
     borderRadius: '20px',
     fontFamily: "'Orbitron', monospace",
     fontSize: '9px',
     fontWeight: '500',
     letterSpacing: '0.1em',
     textDecoration: 'none',
-    background: ok
-      ? 'rgba(16, 232, 144, 0.08)'
-      : 'rgba(239, 68, 68, 0.1)',
-    color: ok ? '#10e890' : '#ef4444',
-    border: `1px solid ${ok ? 'rgba(16,232,144,0.25)' : 'rgba(239,68,68,0.3)'}`,
+    background: ok === false
+      ? 'rgba(255, 69, 69, 0.1)'
+      : 'rgba(46, 232, 160, 0.08)',
+    color: ok === false ? '#FF4545' : '#2EE8A0',
+    border: `1px solid ${ok === false ? 'rgba(255,69,69,0.25)' : 'rgba(46,232,160,0.22)'}`,
   }),
 
   statusDot: (ok) => ({
-    width: '6px',
-    height: '6px',
+    width: '5px',
+    height: '5px',
     borderRadius: '50%',
-    background: ok ? '#10e890' : '#ef4444',
-    animation: 'pulse-glow 2s ease-in-out infinite',
+    background: ok === false ? '#FF4545' : '#2EE8A0',
+    animation: 'pulse 2s ease-in-out infinite',
     flexShrink: 0,
   }),
 }

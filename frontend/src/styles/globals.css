@@ -1,76 +1,64 @@
 /* ============================================================================
-   SC Navigator · Globale Styles
+   SC Navigator · Design System — VORTEX Style
    
-   Design-System:
-   - Glassmorphismus: Halbtransparente Karten mit backdrop-filter: blur()
-   - Space-Ästhetik: Dunkler Hintergrund mit Nebel-Gradienten
-   - Dual-Tone Akzente: Cyan (#00d4ff) + Lila (#7c3aed)
-   - Typographie: Orbitron (Display) + Outfit (Body)
+   Inspiriert von "VORTEX - Vessel Command Hub":
+   • Atmosphärischer dunkler Hintergrund (Teal/Schwarz)
+   • Dunkle, fast opake Panels die über dem Hintergrund schweben
+   • Einziger Akzent: Orange #FF6B2B
+   • Typographie: Orbitron (Headings) + Outfit (Body)
+   
+   Hintergrundbild einbinden:
+     → Eigenes SC-Schiff-Screenshot als /frontend/public/bg.jpg speichern
+     → body { background-image: url('/bg.jpg') } einkommentieren
    ============================================================================ */
 
-/* ── CSS Custom Properties (Design-Tokens) ────────────────────────────────── */
+/* ── Design Tokens ───────────────────────────────────────────────────────── */
 :root {
-  /* Hintergrundfarben */
-  --bg-base:        #020812;        /* Tiefschwarz-Navy (Weltraum-Hintergrund) */
-  --bg-deep:        #050f1f;        /* Leicht heller für Tiefeneffekt */
-  --bg-surface:     rgba(8, 20, 45, 0.8);   /* Oberfläche für Karten */
+  /* Hintergründe */
+  --bg-base:        #070c0c;
+  --bg-panel:       rgba(10, 18, 24, 0.93);
+  --bg-panel-hover: rgba(16, 28, 36, 0.96);
+  --bg-row-hover:   rgba(255, 107, 43, 0.05);
+  --bg-sidebar:     rgba(8, 14, 18, 0.97);
 
-  /* Glassmorphismus-Werte */
-  --glass-bg:       rgba(255, 255, 255, 0.04);  /* Sehr subtile weiße Füllung */
-  --glass-bg-hover: rgba(255, 255, 255, 0.07);  /* Etwas heller beim Hover */
-  --glass-border:   rgba(255, 255, 255, 0.08);  /* Rand der Glaskarten */
-  --glass-border-accent: rgba(0, 212, 255, 0.25); /* Leuchtender Rand bei Fokus */
-  --glass-blur:     blur(24px) saturate(180%);  /* Blur-Effekt für Glas */
+  /* Ränder */
+  --border:         rgba(255, 255, 255, 0.09);
+  --border-bright:  rgba(255, 255, 255, 0.16);
+  --border-accent:  rgba(255, 107, 43, 0.5);
 
-  /* Primärer Akzent: Cyan / Electric Blue */
-  --cyan:           #00d4ff;
-  --cyan-dim:       rgba(0, 212, 255, 0.15);
-  --cyan-glow:      rgba(0, 212, 255, 0.08);
-  --cyan-border:    rgba(0, 212, 255, 0.3);
+  /* Orange Akzent (einzige Akzentfarbe) */
+  --accent:         #FF6B2B;
+  --accent-dim:     rgba(255, 107, 43, 0.15);
+  --accent-glow:    rgba(255, 107, 43, 0.22);
+  --accent-light:   #FF8C55;
 
-  /* Sekundärer Akzent: Electric Purple */
-  --purple:         #7c3aed;
-  --purple-dim:     rgba(124, 58, 237, 0.2);
-  --purple-glow:    rgba(124, 58, 237, 0.1);
+  /* Status */
+  --green:      #2EE8A0;
+  --green-dim:  rgba(46, 232, 160, 0.12);
+  --red:        #FF4545;
+  --red-dim:    rgba(255, 69, 69, 0.12);
 
-  /* Zusätzliche Statusfarben */
-  --green:          #10e890;
-  --green-dim:      rgba(16, 232, 144, 0.15);
-  --amber:          #f59e0b;
-  --amber-dim:      rgba(245, 158, 11, 0.15);
-  --red:            #ef4444;
-  --red-dim:        rgba(239, 68, 68, 0.15);
+  /* Text */
+  --text-primary:   #eef3f5;
+  --text-secondary: rgba(185, 205, 215, 0.72);
+  --text-muted:     rgba(130, 160, 175, 0.5);
+  --text-dim:       rgba(100, 130, 148, 0.32);
 
-  /* Textfarben */
-  --text-primary:   #e8f4fd;        /* Helles Blauweiss */
-  --text-secondary: rgba(148, 180, 210, 0.9);  /* Gedämpftes Blaugrau */
-  --text-muted:     rgba(100, 140, 180, 0.6);  /* Sehr gedämpft für Labels */
-  --text-dim:       rgba(80, 110, 150, 0.45);  /* Kaum sichtbar für Dekoration */
+  /* Fonts */
+  --font-display: 'Orbitron', monospace;
+  --font-body:    'Outfit', sans-serif;
 
-  /* Typographie */
-  --font-display:   'Orbitron', monospace;    /* Headings, Badges, Labels */
-  --font-body:      'Outfit', sans-serif;     /* Alles andere */
+  /* Radien (eher eckig wie VORTEX) */
+  --r-sm:  5px;
+  --r-md:  8px;
+  --r-lg:  10px;
 
-  /* Abstände & Radien */
-  --radius-sm:      8px;
-  --radius-md:      12px;
-  --radius-lg:      18px;
-  --radius-xl:      24px;
-
-  /* Übergänge */
-  --transition:     all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-fast: all 0.15s ease;
+  --transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Reset & Basis ────────────────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html { font-size: 16px; scroll-behavior: smooth; }
-
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
@@ -79,235 +67,170 @@ body {
   line-height: 1.6;
   min-height: 100vh;
   overflow-x: hidden;
-
-  /* Verhindert weißen Flash beim Laden */
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Space-Hintergrund (Pure CSS Nebula) ─────────────────────────────────── */
-/*
-   Schichtenaufbau des Hintergrunds (von hinten nach vorne):
-   1. Basis: Sehr dunkles Navy (#020812)
-   2. Nebel links: Lila Wolke für Tiefe
-   3. Nebel rechts: Cyan/Teal Schimmer
-   4. Nebel Mitte-unten: Schwaches Lila
-   5. Subtile Vignette für Randabdunklung
-*/
+/* ── Atmosphärischer Hintergrund ─────────────────────────────────────────
+   CSS-Fallback ohne Bild. Simuliert den teal-grünen Glow des VORTEX Designs.
+   Für eigenes Bild: Datei in /public/bg.jpg ablegen und Zeile einkommentieren.
+   ─────────────────────────────────────────────────────────────────────────*/
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background:
-    radial-gradient(ellipse 60% 50% at 15% 25%,  rgba(124, 58, 237, 0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 85% 75%,  rgba(0, 212, 255, 0.08)  0%, transparent 55%),
-    radial-gradient(ellipse 40% 60% at 70% 20%,  rgba(0, 180, 220, 0.06)  0%, transparent 50%),
-    radial-gradient(ellipse 70% 50% at 30% 80%,  rgba(100, 40, 200, 0.07) 0%, transparent 60%),
-    radial-gradient(ellipse 100% 100% at 50% 50%, #030d1e 0%, var(--bg-base) 100%);
-  pointer-events: none;
   z-index: 0;
+  pointer-events: none;
+
+  /* Zum Einbinden eines Hintergrundbilds:
+  background-image: url('/bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat; */
+
+  background:
+    radial-gradient(ellipse 90% 65% at 62% 42%, rgba(0, 85, 75, 0.26) 0%, transparent 58%),
+    radial-gradient(ellipse 50% 48% at 10% 88%, rgba(0, 50, 60, 0.2)  0%, transparent 52%),
+    radial-gradient(ellipse 42% 32% at 90% 10%, rgba(0, 40, 50, 0.15) 0%, transparent 48%),
+    radial-gradient(ellipse 70% 55% at 50% 50%, rgba(4, 16, 20, 0.55) 0%, transparent 100%),
+    linear-gradient(158deg, #060c0c 0%, #0b1b19 45%, #060d0d 100%);
 }
 
-/* Statisches Sternen-Overlay (Box-Shadows als Sterne) */
+/* Sterne */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
-  background-image:
-    radial-gradient(1px 1px at 10%  15%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1px 1px at 25%  60%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 40%  30%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 55%  80%, rgba(255,255,255,0.25) 0%, transparent 100%),
-    radial-gradient(1px 1px at 70%  45%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1px 1px at 82%  20%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1px 1px at 92%  65%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 18% 88%, rgba(200,220,255,0.4) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 65% 12%, rgba(200,220,255,0.35) 0%, transparent 100%),
-    radial-gradient(1px 1px at 48%  55%, rgba(255,255,255,0.2) 0%, transparent 100%),
-    radial-gradient(1px 1px at 78%  88%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 33%  42%, rgba(255,255,255,0.25) 0%, transparent 100%);
-  pointer-events: none;
   z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at  8% 12%, rgba(255,255,255,0.32) 0%, transparent 100%),
+    radial-gradient(1px 1px at 22% 68%, rgba(255,255,255,0.22) 0%, transparent 100%),
+    radial-gradient(1px 1px at 38% 28%, rgba(255,255,255,0.28) 0%, transparent 100%),
+    radial-gradient(1px 1px at 55% 82%, rgba(255,255,255,0.18) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 40%, rgba(255,255,255,0.25) 0%, transparent 100%),
+    radial-gradient(1px 1px at 82% 16%, rgba(255,255,255,0.30) 0%, transparent 100%),
+    radial-gradient(1px 1px at 93% 70%, rgba(255,255,255,0.20) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 14% 92%, rgba(200,230,235,0.28) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 74% 6%,  rgba(200,230,235,0.22) 0%, transparent 100%);
 }
 
-/* Alle Inhalte über den Pseudoelementen */
-#root {
-  position: relative;
-  z-index: 1;
+#root { position: relative; z-index: 1; }
+
+/* ── Panel ─────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 
-/* ── Typographie-Hilfklassen ─────────────────────────────────────────────── */
-.display-font { font-family: var(--font-display); }
-.label-text {
+.panel-title {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
 }
 
-/* ── Glassmorphismus-Karte ───────────────────────────────────────────────── */
-/*
-   .glass       → Standard Glas-Karte
-   .glass-dark  → Etwas dunklere Variante für Panels
-   .glass-hover → Reagiert auf Hover mit hellerem Hintergrund
-*/
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-}
-
-.glass-dark {
-  background: rgba(5, 12, 28, 0.7);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-}
-
-.glass-hover {
-  transition: var(--transition);
-  cursor: pointer;
-}
-.glass-hover:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--glass-border-accent);
-}
-
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* ── Buttons ─────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
   color: var(--text-primary);
-  backdrop-filter: var(--glass-blur);
   transition: var(--transition);
-  white-space: nowrap;
 }
 .btn:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--glass-border-accent);
+  background: var(--bg-panel-hover);
+  border-color: var(--border-bright);
 }
-
-/* Primär-Button mit Cyan-Akzent */
 .btn-primary {
-  background: var(--cyan-dim);
-  border-color: var(--cyan-border);
-  color: var(--cyan);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
 }
 .btn-primary:hover {
-  background: rgba(0, 212, 255, 0.22);
-  box-shadow: 0 0 20px var(--cyan-glow);
+  background: #ff7d45;
+  box-shadow: 0 0 18px var(--accent-glow);
 }
+.btn-sm { padding: 4px 11px; font-size: 11px; border-radius: var(--r-sm); }
 
-/* Kleiner Button */
-.btn-sm {
-  padding: 5px 12px;
-  font-size: 12px;
-  border-radius: var(--radius-sm);
-}
-
-/* ── Formular-Elemente ───────────────────────────────────────────────────── */
+/* ── Input ───────────────────────────────────────────────────────────── */
 .input {
-  background: rgba(8, 20, 45, 0.8);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
+  background: rgba(8, 15, 20, 0.9);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 14px;
-  padding: 10px 14px;
+  font-size: 13px;
+  padding: 8px 14px;
   width: 100%;
   outline: none;
   transition: var(--transition);
-  backdrop-filter: blur(10px);
 }
-.input:focus {
-  border-color: var(--cyan-border);
-  box-shadow: 0 0 0 3px var(--cyan-glow);
-}
-.input::placeholder { color: var(--text-dim); }
+.input:focus { border-color: var(--border-accent); }
+.input::placeholder { color: var(--text-dim); font-size: 12px; }
 
-/* ── Badges / Chips ──────────────────────────────────────────────────────── */
+/* ── Badges ──────────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 9px;
-  border-radius: 20px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+.badge-accent  { background: var(--accent);     color: #fff; }
+.badge-outline { background: var(--accent-dim);  color: var(--accent-light); border: 1px solid var(--border-accent); }
+.badge-green   { background: var(--green-dim);   color: var(--green);  border: 1px solid rgba(46,232,160,0.3); }
+.badge-muted   { background: rgba(255,255,255,0.06); color: var(--text-secondary); border: 1px solid var(--border); }
+
+/* ── Label ───────────────────────────────────────────────────────────── */
+.label {
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-.badge-cyan   { background: var(--cyan-dim);   color: var(--cyan);   border: 1px solid var(--cyan-border); }
-.badge-purple { background: var(--purple-dim); color: #a78bfa;       border: 1px solid rgba(124,58,237,0.4); }
-.badge-green  { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(16,232,144,0.3); }
-.badge-amber  { background: var(--amber-dim);  color: var(--amber);  border: 1px solid rgba(245,158,11,0.3); }
-
-/* ── Trennlinie ──────────────────────────────────────────────────────────── */
-.divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
-  margin: 6px 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-/* ── Layout-Helfer ───────────────────────────────────────────────────────── */
-.page-content {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
-}
+/* ── Divider ─────────────────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); }
 
-/* Responsive Grid: 2 Spalten auf Desktop, 1 auf Mobile */
-.grid-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1rem;
-}
-
-/* ── Scrollbar (passend zum Design) ─────────────────────────────────────── */
-::-webkit-scrollbar       { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 212, 255, 0.4); }
-
-/* ── Links ───────────────────────────────────────────────────────────────── */
-a { color: var(--cyan); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-/* ── Animationen ─────────────────────────────────────────────────────────── */
-
-/* Einblenden beim ersten Render */
+/* ── Animations ──────────────────────────────────────────────────────── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-/* Pulsierendes Leuchten (für Status-Dots) */
-@keyframes pulse-glow {
+@keyframes pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.35; }
 }
+.animate-in { animation: fadeInUp 0.28s ease both; }
+.animate-in:nth-child(1) { animation-delay: 0.04s; }
+.animate-in:nth-child(2) { animation-delay: 0.08s; }
+.animate-in:nth-child(3) { animation-delay: 0.12s; }
+.animate-in:nth-child(4) { animation-delay: 0.16s; }
+.animate-in:nth-child(5) { animation-delay: 0.20s; }
+.animate-in:nth-child(6) { animation-delay: 0.24s; }
 
-.animate-in {
-  animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-/* Gestaffelte Verzögerung für Karten-Grid */
-.animate-in:nth-child(1) { animation-delay: 0.05s; }
-.animate-in:nth-child(2) { animation-delay: 0.10s; }
-.animate-in:nth-child(3) { animation-delay: 0.15s; }
-.animate-in:nth-child(4) { animation-delay: 0.20s; }
-.animate-in:nth-child(5) { animation-delay: 0.25s; }
-.animate-in:nth-child(6) { animation-delay: 0.30s; }
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,107,43,0.22); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,107,43,0.42); }
