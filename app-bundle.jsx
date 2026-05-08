@@ -538,7 +538,7 @@ function TopBar({ tab, setTab, query, setQuery }) {
           <Icon.Comms className="w-4 h-4" />
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500"></span>
         </button>
-        <div className="w-8 h-8 rounded-lg flex-none border border-white/10 bg-white/[0.04] flex items-center justify-center text-[11.5px] font-semibold">DA</div>
+        <div className="w-8 h-8 rounded-lg flex-none border border-white/10 bg-white/[0.04] flex items-center justify-center text-[11.5px] font-semibold">LT</div>
       </div>
     </header>
   );
@@ -599,7 +599,7 @@ function Hero({ activeShipId, setActiveShipId }) {
       <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
         <div>
           <div className="text-[12px] text-white/45 mb-2">Stanton System · Build 4.0.1 LIVE</div>
-          <h1 className="text-[34px] leading-[1.1] font-semibold tracking-tight">Willkommen zurück, <span className="text-white/55">Daniel</span></h1>
+          <h1 className="text-[34px] leading-[1.1] font-semibold tracking-tight">Willkommen zurück, <span className="text-white/55">Luca</span></h1>
           <p className="text-white/55 text-[14px] mt-2 max-w-[540px]">Alle Tools, Routen und Hangar-Daten an einem Ort. Schnellzugriff auf das, was du heute brauchst.</p>
         </div>
         <div className="flex items-center gap-2">
