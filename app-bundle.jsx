@@ -265,7 +265,7 @@ function ServerStatus() {
 // Zum Reaktivieren: /* und */ entfernen + Aufruf in Hero/App einkommentieren
 // ══════════════════════════════════════════════════════════════════════════════
 
-/*
+
 // ── HangarPanel ──────────────────────────────────────────────────────────────
 // Zeigt aktives Schiff mit HP/Fuel/Shields + Schnellauswahl aller Schiffe.
 // Daten: window.SCData.SHIPS (Array) — Format siehe ARCHITECTURE.md
@@ -323,7 +323,7 @@ function HangarPanel({ activeShipId, onSelect }) {
     </Panel>
   );
 }
-*/
+
 
 /*
 // ── TradeRoutes ───────────────────────────────────────────────────────────────
@@ -969,7 +969,7 @@ function Sidebar({ section, setSection }) {
     { id: 'tools',   label: 'Tools',      icon: 'Tools',   active: false },
     { id: 'trade',   label: 'Trade',      icon: 'Trade',   active: false },
     { id: 'mining',  label: 'Mining',     icon: 'Mining',  active: false },
-    { id: 'hangar',  label: 'Hangar',     icon: 'Hangar',  active: false },
+    { id: 'hangar',  label: 'Hangar',     icon: 'Hangar',  active: true },
     { id: 'bounty',  label: 'Bounties',   icon: 'Bounty',  active: false },
     { id: 'watch',   label: 'Watchlist',  icon: 'Watch',   active: false },
     { id: 'org',     label: 'Org',        icon: 'Org',     active: false },
