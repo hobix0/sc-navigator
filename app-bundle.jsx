@@ -41,7 +41,8 @@ function ServerStatus() {
       right={<span className="chip chip-ok"><span className="dot dot-ok"></span>Online</span>}
     >
       <div className="space-y-2">
-        {SERVERS.map(s => (
+        {SERVERS?.length > 0 ? (
+          SERVERS.map(s => (
           <div key={s.region} className="flex items-center gap-3">
             <span className={`dot ${s.status === 'ok' ? 'dot-ok' : s.status === 'warn' ? 'dot-warn' : 'dot-crit'} flex-none`}></span>
             <span className="text-[13px] text-white/85 w-[88px] flex-none truncate">{s.region}</span>
@@ -50,13 +51,19 @@ function ServerStatus() {
             </div>
             <span className="font-mono text-[11.5px] text-white/55 w-12 text-right tabular-nums">{s.ping}ms</span>
           </div>
-        ))}
+        ))
+        ) : (
+          <div className="text-center py-6 text-white/40 text-[12px]">
+            <Icon.Server className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine Server-Daten verfügbar
+          </div>
+        )}
       </div>
       <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex items-center justify-between">
         <div className="text-[12px] text-white/55">
-          Build <span className="font-mono text-white/85 ml-0.5">{PATCH.version}</span>
+          Build <span className="font-mono text-white/85 ml-0.5">{PATCH?.version || 'N/A'}</span>
           <span className="mx-1.5 text-white/30">·</span>
-          <span className="text-white/85">{PATCH.branch}</span>
+          <span className="text-white/85">{PATCH?.branch || 'LIVE'}</span>
         </div>
         <button className="btn !py-1 !px-2 !text-[11px]"><Icon.Refresh className="w-3 h-3" />Aktualisieren</button>
       </div>
@@ -68,10 +75,21 @@ function ServerStatus() {
 
 function HangarPanel({ activeShipId, onSelect }) {
   const { SHIPS } = window.SCData;
-  const ship = SHIPS.find(s => s.id === activeShipId) || SHIPS[0];
+  const ship = SHIPS?.find(s => s.id === activeShipId) || SHIPS?.[0];
+
+  if (!ship) {
+    return (
+      <Panel title="Hangar" sub="Keine Schiffe" strong dense>
+        <div className="text-center py-8 text-white/40 text-[13px]">
+          <Icon.Ship className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          Keine Schiff-Daten verfügbar
+        </div>
+      </Panel>
+    );
+  }
 
   return (
-    <Panel title="Hangar" sub={`${SHIPS.length} Schiffe`} strong dense
+    <Panel title="Hangar" sub={`${SHIPS?.length || 0} Schiffe`} strong dense
       right={<button className="btn !py-1 !px-2 !text-[11px]"><Icon.Plus className="w-3 h-3" />Hinzufügen</button>}
     >
       <div className="rounded-lg border border-white/[0.07] bg-white/[0.02] mb-3 overflow-hidden">
@@ -106,7 +124,7 @@ function HangarPanel({ activeShipId, onSelect }) {
       <div className="mt-4 pt-3.5 border-t border-white/[0.06]">
         <div className="cap mb-2">Schnellauswahl</div>
         <div className="flex flex-wrap gap-1.5">
-          {SHIPS.map(s => (
+          {SHIPS?.map(s => (
             <button key={s.id} onClick={() => onSelect(s.id)}
               className={`px-2.5 py-1 rounded-md text-[11.5px] transition border
                 ${s.id === ship.id ? 'bg-accent-500/15 border-accent-500/40 text-white' : 'bg-white/[0.03] border-white/[0.07] text-white/65 hover:text-white hover:border-white/20'}`}>
@@ -126,6 +144,7 @@ function TradeRoutes() {
   const [sortBy, setSortBy] = useState('profit');
 
   const sorted = useMemo(() => {
+    if (!TRADE_ROUTES?.length) return [];
     return [...TRADE_ROUTES].sort((a, b) => {
       if (sortBy === 'profit') return b.profit - a.profit;
       if (sortBy === 'risk')   return ({ low: 0, med: 1, high: 2 })[a.risk] - ({ low: 0, med: 1, high: 2 })[b.risk];
@@ -133,7 +152,7 @@ function TradeRoutes() {
     });
   }, [sortBy]);
 
-  const max = Math.max(...TRADE_ROUTES.map(r => r.profit));
+  const max = TRADE_ROUTES?.length > 0 ? Math.max(...TRADE_ROUTES.map(r => r.profit)) : 1;
 
   return (
     <Panel title="Top Trade Routen" sub="UEXcorp · Live"
@@ -149,8 +168,9 @@ function TradeRoutes() {
       }
     >
       <div className="space-y-1">
-        {sorted.map((r, i) => (
-          <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-2 px-2 rounded-md hover:bg-white/[0.03]">
+        {sorted.length > 0 ? (
+          sorted.map((r, i) => (
+            <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-2 px-2 rounded-md hover:bg-white/[0.03]">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-white truncate">{r.commodity}</span>
@@ -166,7 +186,13 @@ function TradeRoutes() {
               <div className="text-[10.5px] text-white/40">aUEC/SCU</div>
             </div>
           </div>
-        ))}
+        ))
+        ) : (
+          <div className="text-center py-8 text-white/40 text-[12px]">
+            <Icon.Trade className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine Trade-Routen verfügbar
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -188,14 +214,16 @@ function RefineryTimer() {
 
   return (
     <Panel title="Refinery Jobs" sub="Regolith Co."
-      right={<span className="chip">{REFINERY.length} aktiv</span>}
+      right={<span className="chip">{REFINERY?.length || 0} aktiv</span>}
     >
       <div className="space-y-3">
-        {REFINERY.map(j => {
-          const elapsed = now - j.started;
-          const progress = Math.min(100, (elapsed / j.eta) * 100);
-          const remaining = Math.max(0, j.eta - elapsed);
-          const done = remaining === 0;
+        {REFINERY?.length > 0 ? (
+          REFINERY.map(j => {
+            const elapsed = now - j.started;
+            const progress = Math.min(100, (elapsed / j.eta) * 100);
+            const remaining = Math.max(0, j.eta - elapsed);
+            const done = remaining === 0;
+            return (
           return (
             <div key={j.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -211,7 +239,13 @@ function RefineryTimer() {
               <Bar value={progress} kind={done ? 'ok' : 'rsi'} />
             </div>
           );
-        })}
+        })
+        ) : (
+          <div className="text-center py-8 text-white/40 text-[12px]">
+            <Icon.Mining className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine aktiven Refinery-Jobs
+          </div>
+        )}
       </div>
       <button className="btn w-full justify-center mt-3"><Icon.Plus className="w-3.5 h-3.5" />Neuer Job</button>
     </Panel>
@@ -239,7 +273,8 @@ function BountyTracker() {
       right={<span className="font-mono text-[12px] text-emerald-400 tabular-nums">{total.toLocaleString('de-DE')} aUEC</span>}
     >
       <div className="space-y-2">
-        {BOUNTIES.map(b => {
+        {BOUNTIES?.length > 0 ? (
+          BOUNTIES.map(b => {
           const isOn = accepted.has(b.id);
           const diff = b.diff === 'hard' ? 'crit' : b.diff === 'med' ? 'warn' : 'ok';
           return (
@@ -261,7 +296,13 @@ function BountyTracker() {
               </div>
             </button>
           );
-        })}
+        })
+        ) : (
+          <div className="text-center py-8 text-white/40 text-[12px]">
+            <Icon.Bounty className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine Bounties verfügbar
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -276,24 +317,31 @@ function Watchlist() {
       right={<button className="btn !py-1 !px-2 !text-[11px]"><Icon.Plus className="w-3 h-3" /></button>}
     >
       <div className="space-y-1">
-        {WATCHLIST.map((w, i) => (
-          <div key={i} className="grid grid-cols-[auto_1fr_auto_auto] gap-3 items-center py-2 px-2 rounded-md hover:bg-white/[0.03]">
-            <div className="w-8 h-8 rounded-md bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-none">
-              <Icon.Ship className="w-4 h-4 text-white/55" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] truncate">{w.ship}</div>
-              <div className="text-[11px] text-white/45">{w.mfr}</div>
-            </div>
-            <div className={`font-mono text-[11.5px] font-medium tabular-nums ${w.change > 0 ? 'text-emerald-400' : w.change < 0 ? 'text-red-400' : 'text-white/40'}`}>
-              {w.change > 0 ? '+' : ''}{w.change}%
-            </div>
-            <div className="text-right tabular-nums">
-              <div className="font-mono text-[13px] font-semibold">${w.price}</div>
-              {w.alert && <div className="text-[10px] text-amber-400/80">Alert aktiv</div>}
+        {WATCHLIST?.length > 0 ? (
+          WATCHLIST.map((w, i) => (
+            <div key={i} className="grid grid-cols-[auto_1fr_auto_auto] gap-3 items-center py-2 px-2 rounded-md hover:bg-white/[0.03]">
+              <div className="w-8 h-8 rounded-md bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-none">
+                <Icon.Ship className="w-4 h-4 text-white/55" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] truncate">{w.ship}</div>
+                <div className="text-[11px] text-white/45">{w.mfr}</div>
+              </div>
+              <div className={`font-mono text-[11.5px] font-medium tabular-nums ${w.change > 0 ? 'text-emerald-400' : w.change < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                {w.change > 0 ? '+' : ''}{w.change}%
+              </div>
+              <div className="text-right tabular-nums">
+                <div className="font-mono text-[13px] font-semibold">${w.price}</div>
+                {w.alert && <div className="text-[10px] text-amber-400/80">Alert aktiv</div>}
             </div>
           </div>
-        ))}
+        ))
+        ) : (
+          <div className="text-center py-8 text-white/40 text-[12px]">
+            <Icon.Ship className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine Schiffe auf der Watchlist
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -303,10 +351,13 @@ function Watchlist() {
 
 function EventsPanel() {
   const { EVENTS, PATCH } = window.SCData;
+  const patchSub = PATCH?.version ? `${PATCH.version} ${PATCH.branch || 'LIVE'} · ${PATCH.released || 'N/A'}` : 'Keine Patch-Daten';
+  
   return (
-    <Panel title="Aktive Events &amp; Patch" sub={`${PATCH.version} ${PATCH.branch} · ${PATCH.released}`}>
+    <Panel title="Aktive Events &amp; Patch" sub={patchSub}>
       <div className="space-y-2 mb-4">
-        {EVENTS.map((e, i) => (
+        {EVENTS?.length > 0 ? (
+          EVENTS.map((e, i) => (
           <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06]">
             <div className="flex items-center gap-3 min-w-0">
               <span className={`chip chip-${e.severity === 'high' ? 'crit' : 'warn'}`}>{e.severity === 'high' ? 'hoch' : 'mittel'}</span>
@@ -320,7 +371,13 @@ function EventsPanel() {
               <div className="font-mono text-[12px] text-white">{e.endsIn}</div>
             </div>
           </div>
-        ))}
+        ))
+        ) : (
+          <div className="text-center py-6 text-white/40 text-[12px]">
+            <Icon.Calendar className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            Keine aktiven Events
+          </div>
+        )}
       </div>
       <div className="border-t border-white/[0.06] pt-3.5">
         <div className="flex items-center justify-between mb-2">
@@ -330,12 +387,16 @@ function EventsPanel() {
           </button>
         </div>
         <ul className="text-[12.5px] text-white/65 space-y-1.5">
-          {PATCH.highlights.map((h, i) => (
+          {PATCH?.highlights?.length > 0 ? (
+            PATCH.highlights.map((h, i) => (
             <li key={i} className="flex gap-2">
               <span className="text-white/30 mt-0.5">·</span>
               <span>{h}</span>
             </li>
-          ))}
+          ))
+          ) : (
+            <li className="text-white/40">Keine Highlights verfügbar</li>
+          )}
         </ul>
       </div>
     </Panel>
