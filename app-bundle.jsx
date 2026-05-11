@@ -224,7 +224,6 @@ function RefineryTimer() {
             const remaining = Math.max(0, j.eta - elapsed);
             const done = remaining === 0;
             return (
-          return (
             <div key={j.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
