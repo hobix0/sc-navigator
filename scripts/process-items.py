@@ -1,7 +1,7 @@
 # scripts/process-items.py
-# Quelle: Star Citizen Wiki (starcitizen.tools) — MediaWiki Cargo API
-# Holt FPS-Waffen, Rüstungen, Schiffswaffen und Komponenten.
-# Keine Authentifizierung nötig — Wiki ist öffentlich zugänglich.
+# Quelle: api.star-citizen.wiki — öffentliche REST API aus Spieldaten (kein Auth nötig)
+# Docs:   https://docs.star-citizen.wiki
+# Daten:  Items, FPS Waffen, Rüstungen, Schiffskomponenten, direkt aus 4.x Spieldateien
 
 import json
 import sys
@@ -9,191 +9,122 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
 
-WIKI_API = "https://starcitizen.tools/api.php"
+API_BASE = "https://api.star-citizen.wiki/api/v2"
 
-# ── API-Hilfsfunktion ─────────────────────────────────────────────────────────
-def wiki_get(params, timeout=30):
-    """Ruft die MediaWiki API ab und gibt das JSON-Ergebnis zurück."""
-    params['format'] = 'json'
-    url = WIKI_API + '?' + urllib.parse.urlencode(params)
+def fetch(path, params=None, timeout=30):
+    """Ruft die star-citizen.wiki API ab und gibt data-Array zurück."""
+    url = API_BASE + path
+    if params:
+        url += '?' + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={
+        'Accept':     'application/json',
         'User-Agent': 'SC-Navigator/1.0 (github.com/Hobix0/SC-Navigator)',
-        'Accept': 'application/json',
     })
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode('utf-8'))
+            data = json.loads(r.read().decode('utf-8'))
+        return data.get('data', []) if isinstance(data, dict) else []
     except Exception as e:
-        print(f"  Fehler: {e}")
-        return {}
+        print(f"  Fehler bei {path}: {e}")
+        return []
 
-def cargo_page(table, fields, where='', limit=500, offset=0):
-    """Eine Seite der Cargo-Abfrage."""
-    params = {
-        'action': 'cargoquery',
-        'tables': table,
-        'fields': fields,
-        'limit': limit,
-        'offset': offset,
-    }
-    if where:
-        params['where'] = where
-    data = wiki_get(params)
-    return [row.get('title', {}) for row in data.get('cargoquery', [])]
+def fetch_all(path, base_params=None, per_page=100):
+    """Holt alle Seiten eines paginierten Endpoints."""
+    all_items = []
+    page = 1
+    params = dict(base_params or {})
+    params['limit'] = per_page
 
-def cargo_all(table, fields, where=''):
-    """Holt alle Ergebnisse mit automatischer Pagination."""
-    results, offset, limit = [], 0, 500
     while True:
-        batch = cargo_page(table, fields, where=where, limit=limit, offset=offset)
-        results.extend(batch)
-        if len(batch) < limit:
+        params['page'] = page
+        batch = fetch(path, params)
+        if not batch:
             break
-        offset += limit
-        print(f"    ... {len(results)} geladen")
-    return results
+        all_items.extend(batch)
+        print(f"    Seite {page}: {len(batch)} Items ({len(all_items)} gesamt)")
+        if len(batch) < per_page:
+            break
+        page += 1
 
-# ── Wiki erreichbar? ──────────────────────────────────────────────────────────
-print("→ Prüfe SC Wiki Verbindung...")
-test = wiki_get({'action': 'query', 'meta': 'siteinfo', 'siprop': 'statistics'})
-if not test:
-    print("  FEHLER: SC Wiki nicht erreichbar")
-    sys.exit(1)
-pages = test.get('query', {}).get('statistics', {}).get('articles', '?')
-print(f"  Wiki erreichbar — {pages} Artikel")
+    return all_items
 
-# ── Cargo-Tabellen ausprobieren ───────────────────────────────────────────────
-# Die SC Wiki nutzt Cargo-Templates. Wir probieren die wahrscheinlichsten Tabellen.
-TABLES = [
-    {
-        'table':  'Items',
-        'fields': '_pageName,Name,Type,Class,Size,Grade,Manufacturer',
-        'label':  'Allgemeine Items',
-    },
-    {
-        'table':  'Weapons',
-        'fields': '_pageName,Name,Type,Class,Size,Grade,Manufacturer',
-        'label':  'Waffen',
-    },
-    {
-        'table':  'Armor',
-        'fields': '_pageName,Name,Type,Class,Size,Grade,Manufacturer',
-        'label':  'Rüstungen',
-    },
-    {
-        'table':  'Personal_equipment',
-        'fields': '_pageName,Name,Type,Class,Size,Manufacturer',
-        'label':  'Persönliche Ausrüstung',
-    },
-    {
-        'table':  'Ship_equipment',
-        'fields': '_pageName,Name,Type,Class,Size,Grade,Manufacturer',
-        'label':  'Schiffsausrüstung',
-    },
+# ── Kategorien die wir holen ──────────────────────────────────────────────────
+# Format: (endpoint, filter-params, Anzeige-Label)
+CATEGORIES = [
+    ('/items', {'filter[type]':     'WeaponPersonal'},    'FPS Waffe'),
+    ('/items', {'filter[category]': 'fps-armor'},         'Rüstung'),
+    ('/items', {'filter[category]': 'clothes'},           'Kleidung'),
+    ('/items', {'filter[category]': 'weapon-attachments'},'Waffenaufsatz'),
+    ('/items', {'filter[category]': 'medical'},           'Medizin'),
+    ('/items', {'filter[type]':     'Cooler'},            'Kühler'),
+    ('/items', {'filter[type]':     'PowerPlant'},        'Reaktor'),
+    ('/items', {'filter[type]':     'QuantumDrive'},      'Quantum-Antrieb'),
+    ('/items', {'filter[type]':     'Shield'},            'Schild'),
+    ('/items', {'filter[type]':     'WeaponGun'},         'Schiffswaffe'),
+    ('/items', {'filter[type]':     'Missile'},           'Rakete'),
+    ('/items', {'filter[type]':     'MiningLaser'},       'Mining-Laser'),
+    ('/items', {'filter[type]':     'FlightController'},  'Flugregler'),
 ]
 
-all_items   = {}   # name_key → item dict
-found_tables = []
+# ── Items laden ───────────────────────────────────────────────────────────────
+print(f"→ Lade Items von api.star-citizen.wiki...")
+all_items = {}   # uuid → item
 
-for t in TABLES:
-    print(f"→ Tabelle '{t['table']}'...")
-    test_row = cargo_page(t['table'], t['fields'], limit=1)
-
-    if not test_row:
-        print(f"  Leer oder existiert nicht — übersprungen")
-        continue
-
-    print(f"  Vorhanden! Felder: {list(test_row[0].keys())}")
-    rows = cargo_all(t['table'], t['fields'])
-    found_tables.append(t['table'])
+for (path, params, kind_label) in CATEGORIES:
+    print(f"  [{kind_label}]")
+    rows = fetch_all(path, base_params=params)
 
     for row in rows:
-        name = (row.get('Name') or row.get('_pageName') or '').strip()
-        if not name:
+        uuid = row.get('uuid') or row.get('class_name')
+        if not uuid or uuid in all_items:
             continue
-        key = name.lower()
-        if key not in all_items:
-            all_items[key] = {
-                'id':           row.get('_pageName', name).replace(' ', '_'),
-                'name':         name,
-                'kind':         (row.get('Type') or row.get('Class') or t['label']),
-                'manufacturer': (row.get('Manufacturer') or '').strip(),
-                'grade':        (row.get('Grade') or '').strip(),
-                'size':         (row.get('Size') or '').strip(),
-                'is_illegal':   False,
-                'best_buy':     None,
-                'best_sell':    None,
-                'profit':       0,
-                'wiki_url':     f"https://starcitizen.tools/{urllib.parse.quote(name.replace(' ', '_'))}",
-            }
 
-    print(f"  {len(rows)} Einträge geladen")
+        # Hersteller
+        mfr = ''
+        if isinstance(row.get('manufacturer'), dict):
+            mfr = row['manufacturer'].get('name') or ''
+        elif isinstance(row.get('manufacturer'), str):
+            mfr = row['manufacturer']
 
-# ── Fallback: Kategorie-Abfrage wenn keine Cargo-Tabellen gefunden ────────────
+        # Größe / Grade
+        size  = str(row.get('size', ''))
+        grade = str(row.get('grade', ''))
+
+        all_items[uuid] = {
+            'id':           uuid,
+            'name':         row.get('name') or row.get('class_name') or '?',
+            'class_name':   row.get('class_name', ''),
+            'kind':         kind_label,
+            'type':         row.get('type', ''),
+            'manufacturer': mfr,
+            'size':         size,
+            'grade':        grade,
+            'is_illegal':   False,
+            'best_buy':     None,
+            'best_sell':    None,
+            'profit':       0,
+            'wiki_url':     f"https://api.star-citizen.wiki/items/{urllib.parse.quote(row.get('class_name',''))}",
+        }
+
+    print(f"    → {len(rows)} geladen, gesamt: {len(all_items)}")
+
+print(f"\n→ Gesamt: {len(all_items)} Items (dedupliziert)")
+
 if not all_items:
-    print("→ Kein Cargo gefunden — Fallback: Wiki-Kategorien...")
+    print("FEHLER: Keine Items gefunden — Verbindung prüfen")
+    sys.exit(1)
 
-    CATEGORIES = [
-        ('Personal weapons',    'FPS Waffe'),
-        ('Armor',               'Rüstung'),
-        ('Ship weapons',        'Schiffswaffe'),
-        ('Ship components',     'Schiffskomponente'),
-        ('Coolers',             'Kühler'),
-        ('Power plants',        'Reaktor'),
-        ('Shields',             'Schild'),
-        ('Quantum drives',      'Quantum-Antrieb'),
-    ]
-
-    for cat_name, kind in CATEGORIES:
-        print(f"  Kategorie: {cat_name}")
-        cont = {}
-        while True:
-            params = {
-                'action':  'query',
-                'list':    'categorymembers',
-                'cmtitle': f'Category:{cat_name}',
-                'cmlimit': 500,
-                'cmtype':  'page',
-                **cont,
-            }
-            data   = wiki_get(params)
-            members = data.get('query', {}).get('categorymembers', [])
-
-            for m in members:
-                name = m.get('title', '').strip()
-                key  = name.lower()
-                if name and key not in all_items:
-                    all_items[key] = {
-                        'id':           name.replace(' ', '_'),
-                        'name':         name,
-                        'kind':         kind,
-                        'manufacturer': '',
-                        'grade':        '',
-                        'size':         '',
-                        'is_illegal':   False,
-                        'best_buy':     None,
-                        'best_sell':    None,
-                        'profit':       0,
-                        'wiki_url':     f"https://starcitizen.tools/{urllib.parse.quote(name.replace(' ', '_'))}",
-                    }
-
-            cont_data = data.get('continue', {})
-            if not cont_data:
-                break
-            cont = cont_data
-
-        print(f"    {len([k for k in all_items if all_items[k]['kind'] == kind])} Items")
+# ── Debug: erste 3 Items ausgeben ─────────────────────────────────────────────
+sample = list(all_items.values())[:3]
+for s in sample:
+    print(f"  Beispiel: {s['name']} ({s['kind']}) — {s['manufacturer']}")
 
 # ── Ausgabe ───────────────────────────────────────────────────────────────────
 items = sorted(all_items.values(), key=lambda x: x['name'].lower())
 
-print(f"→ Gesamt: {len(items)} Items")
-if not items:
-    print("  WARNUNG: Keine Items gefunden!")
-
 output = {
     '_cached_at': datetime.now(timezone.utc).isoformat(),
-    '_source':    'Star Citizen Wiki — starcitizen.tools',
+    '_source':    'api.star-citizen.wiki — Spieldaten 4.x',
     '_count':     len(items),
     'items':      items,
 }

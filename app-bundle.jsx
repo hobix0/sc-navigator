@@ -664,6 +664,506 @@ function ToolGrid() {
 */
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ITEM-DATENBANK — Daten via GitHub Action (update-items.yml)
+// Quelle: api.star-citizen.wiki — echte Spieldaten, täglich aktualisiert
+// Tabelle: Name | Typ | Hersteller | Größe | Grade | Link
+// Filter:  Suche, Kategorie, Hersteller
+// Sort:    Klick auf Spaltenheader
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Spalten-Definition
+const COLUMNS = [
+  { key: 'name',         label: 'Name',        sortable: true  },
+  { key: 'kind',         label: 'Typ',          sortable: true  },
+  { key: 'manufacturer', label: 'Hersteller',   sortable: true  },
+  { key: 'size',         label: 'Größe',        sortable: true  },
+  { key: 'grade',        label: 'Grade',        sortable: true  },
+  { key: '_link',        label: '',             sortable: false },
+];
+
+function ItemDatabase() {
+  const [data,   setData]   = useState(null);
+  const [loading,setLoading]= useState(true);
+  const [error,  setError]  = useState(null);
+
+  // Filter-State
+  const [search, setSearch] = useState('');
+  const [kind,   setKind]   = useState('Alle');
+  const [mfr,    setMfr]    = useState('Alle');
+
+  // Sort-State
+  const [sortCol, setSortCol] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+
+  // Daten laden
+  useEffect(() => {
+    fetch('./data-items.json', { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { setData(d); setLoading(false); })
+      .catch(e => { setError(e.message); setLoading(false); });
+  }, []);
+
+  // Unique Kategorien + Hersteller für Filter-Dropdowns
+  const kinds = useMemo(() => {
+    if (!data?.items?.length) return ['Alle'];
+    const s = new Set(data.items.map(i => i.kind).filter(Boolean));
+    return ['Alle', ...Array.from(s).sort()];
+  }, [data]);
+
+  const mfrs = useMemo(() => {
+    if (!data?.items?.length) return ['Alle'];
+    const s = new Set(data.items.map(i => i.manufacturer).filter(Boolean));
+    return ['Alle', ...Array.from(s).sort()];
+  }, [data]);
+
+  // Gefilterte + sortierte Liste
+  const rows = useMemo(() => {
+    if (!data?.items) return [];
+    let list = data.items;
+
+    if (kind !== 'Alle') list = list.filter(i => i.kind === kind);
+    if (mfr  !== 'Alle') list = list.filter(i => i.manufacturer === mfr);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        (i.manufacturer || '').toLowerCase().includes(q) ||
+        (i.kind || '').toLowerCase().includes(q) ||
+        (i.class_name || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Sortierung
+    return [...list].sort((a, b) => {
+      const va = (a[sortCol] ?? '').toString().toLowerCase();
+      const vb = (b[sortCol] ?? '').toString().toLowerCase();
+      // Numerisch für size/grade
+      const na = parseFloat(va), nb = parseFloat(vb);
+      const cmp = (!isNaN(na) && !isNaN(nb))
+        ? na - nb
+        : va.localeCompare(vb);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [data, kind, mfr, search, sortCol, sortDir]);
+
+  // Spalten-Klick: gleiche Spalte = Richtung umkehren, neue = asc
+  function handleSort(col) {
+    if (!col.sortable) return;
+    if (sortCol === col.key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col.key); setSortDir('asc'); }
+  }
+
+  const SortIcon = ({ col }) => sortCol === col.key
+    ? <span className="ml-1 opacity-70">{sortDir === 'asc' ? '↑' : '↓'}</span>
+    : <span className="ml-1 opacity-25">↕</span>;
+
+  const cacheAge = data?._cached_at ? timeAgo(data._cached_at) : null;
+
+  return (
+    <div>
+      {/* Quelle + Cache-Info */}
+      <div className="glass mb-4 px-4 py-2.5 flex items-center gap-3 text-[12px] text-white/45">
+        <span>Quelle: <a href="https://api.star-citizen.wiki" target="_blank" rel="noopener noreferrer"
+          className="text-white/65 hover:text-white underline">api.star-citizen.wiki</a> · Spieldaten 4.x</span>
+        {cacheAge && <span className="text-white/25">· Cache: {cacheAge}</span>}
+      </div>
+
+      {/* ── Filter-Leiste ──────────────────────────────────────────────── */}
+      <div className="glass mb-4 px-4 py-3 flex flex-wrap gap-3 items-end">
+
+        {/* Volltextsuche */}
+        <div className="flex-1 min-w-[200px] max-w-[280px]">
+          <div className="cap mb-1.5">Suche</div>
+          <div className="relative">
+            <Icon.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Name, Hersteller, Klasse…"
+              className="field w-full pl-9 !py-2 !text-[13px]" />
+            {search && (
+              <button onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/35 hover:text-white text-sm">✕</button>
+            )}
+          </div>
+        </div>
+
+        {/* Typ-Filter */}
+        <div className="min-w-[160px]">
+          <div className="cap mb-1.5">Typ</div>
+          <select value={kind} onChange={e => setKind(e.target.value)}
+            className="field w-full !py-2 !text-[13px]">
+            {kinds.map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </div>
+
+        {/* Hersteller-Filter */}
+        <div className="min-w-[160px]">
+          <div className="cap mb-1.5">Hersteller</div>
+          <select value={mfr} onChange={e => setMfr(e.target.value)}
+            className="field w-full !py-2 !text-[13px]">
+            {mfrs.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        {/* Filter zurücksetzen */}
+        {(search || kind !== 'Alle' || mfr !== 'Alle') && (
+          <button onClick={() => { setSearch(''); setKind('Alle'); setMfr('Alle'); }}
+            className="btn !py-2 !text-[12px]">
+            Filter zurücksetzen
+          </button>
+        )}
+
+        {/* Treffer-Zahl */}
+        <div className="ml-auto text-[12px] text-white/40 self-center">
+          {!loading && `${rows.length.toLocaleString('de-DE')} Items`}
+        </div>
+      </div>
+
+      {/* ── Zustände ───────────────────────────────────────────────────── */}
+      {loading && (
+        <div className="glass text-center py-12 text-white/40 text-[13px]">
+          <Icon.Refresh className="w-5 h-5 mx-auto mb-2 opacity-40 animate-spin" />
+          Lade Item-Datenbank…
+        </div>
+      )}
+      {error && !loading && (
+        <div className="glass border border-red-500/20 bg-red-500/5 p-5 text-[13px] text-red-300/80 rounded-xl">
+          <div className="font-semibold mb-1">Fehler beim Laden</div>
+          {error}
+          <div className="mt-2 text-[12px] text-white/40">
+            GitHub → Actions → Update Items Cache → Run workflow
+          </div>
+        </div>
+      )}
+      {!loading && !error && data?._count === 0 && (
+        <div className="glass text-center py-12 text-white/40 text-[13px]">
+          <div className="mb-1 font-medium">Noch keine Daten vorhanden</div>
+          <div className="text-[12px]">GitHub → Actions → Update Items Cache → Run workflow</div>
+        </div>
+      )}
+
+      {/* ── Tabelle ────────────────────────────────────────────────────── */}
+      {!loading && !error && rows.length > 0 && (
+        <div className="glass overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px] border-collapse">
+
+              {/* Tabellen-Header */}
+              <thead>
+                <tr className="border-b border-white/[0.08]">
+                  {COLUMNS.map(col => (
+                    <th key={col.key}
+                        onClick={() => handleSort(col)}
+                        className={`cap text-left px-4 py-3 whitespace-nowrap select-none
+                          ${col.sortable ? 'cursor-pointer hover:text-white/70' : ''}`}>
+                      {col.label}
+                      {col.sortable && <SortIcon col={col} />}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              {/* Tabellen-Body */}
+              <tbody>
+                {rows.map((item, i) => (
+                  <tr key={item.id || i}
+                      className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+
+                    {/* Name mit Kategorie-Farbpunkt */}
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-1.5 h-5 rounded-full flex-none"
+                             style={{ background: KIND_COLORS[item.kind] || '#6b7280' }} />
+                        <span className="font-medium text-white/90 truncate max-w-[220px]">
+                          {item.name}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Typ */}
+                    <td className="px-3 py-2.5">
+                      <span className="chip" style={{
+                        background: (KIND_COLORS[item.kind] || '#6b7280') + '22',
+                        color:       KIND_COLORS[item.kind] || '#9ca3af',
+                        border:     `1px solid ${(KIND_COLORS[item.kind] || '#6b7280')}44`,
+                      }}>
+                        {item.kind || '—'}
+                      </span>
+                    </td>
+
+                    {/* Hersteller */}
+                    <td className="px-3 py-2.5 text-white/65 truncate max-w-[140px]">
+                      {item.manufacturer || '—'}
+                    </td>
+
+                    {/* Größe */}
+                    <td className="px-3 py-2.5 text-center">
+                      {item.size ? (
+                        <span className="font-mono text-[12px] text-white/70">{item.size}</span>
+                      ) : <span className="text-white/25">—</span>}
+                    </td>
+
+                    {/* Grade */}
+                    <td className="px-3 py-2.5 text-center">
+                      {item.grade ? (
+                        <span className="font-mono text-[12px] text-white/70">{item.grade}</span>
+                      ) : <span className="text-white/25">—</span>}
+                    </td>
+
+                    {/* Link */}
+                    <td className="px-4 py-2.5 text-right">
+                      <a href={item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`}
+                         target="_blank" rel="noopener noreferrer"
+                         className="inline-flex items-center gap-1.5 text-[11.5px] text-white/35 hover:text-white transition-colors">
+                        <Icon.External className="w-3.5 h-3.5" />
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Tabellen-Footer */}
+          <div className="px-4 py-3 border-t border-white/[0.06] flex items-center justify-between text-[11.5px] text-white/35">
+            <span>{rows.length.toLocaleString('de-DE')} von {data?._count?.toLocaleString('de-DE')} Items</span>
+            <span>api.star-citizen.wiki · {cacheAge ? `Cache: ${cacheAge}` : ''}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Farben pro Kategorie für Farbpunkte und Badges
+const KIND_COLORS = {
+  'FPS Waffe':       '#ef4444',
+  'Rüstung':         '#3b82f6',
+  'Kleidung':        '#8b5cf6',
+  'Waffenaufsatz':   '#f97316',
+  'Medizin':         '#22c55e',
+  'Schiffswaffe':    '#f97316',
+  'Schild':          '#14b8a6',
+  'Kühler':          '#06b6d4',
+  'Reaktor':         '#f59e0b',
+  'Quantum-Antrieb': '#a855f7',
+  'Flugregler':      '#64748b',
+  'Rakete':          '#f43f5e',
+  'Mining-Laser':    '#84cc16',
+  'Gerät':           '#94a3b8',
+};
+
+
+// Daten sind direkt hier eingebettet (keine externe API nötig).
+// Neue Links hinzufügen: einfach ein Objekt in LINK_CATS ergänzen.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Alle Link-Kategorien mit ihren Kacheln
+const LINK_CATS = [
+  {
+    id: 'ships', label: 'Ships & Loadouts',
+    // CSS-Gradient als Kachel-Hintergrund (kein externes Bild nötig)
+    bg: 'linear-gradient(135deg,#0d2a4a 0%,#0a1f3a 100%)',
+    accent: '#3b82f6', icon: '🚀',
+    links: [
+      { name: 'Erkul.games',       url: 'https://www.erkul.games',                              desc: 'Loadout-Optimizer & DPS-Rechner',           badge: 'Top' },
+      { name: 'FleetYards',        url: 'https://fleetyards.net',                               desc: 'Schiffsdatenbank & Vergleichstool'                        },
+      { name: 'Ship Perf. Viewer', url: 'https://www.spviewer.eu',                              desc: 'Ausrüstungsstatistiken & Specs'                          },
+      { name: 'RSI Pledge Store',  url: 'https://robertsspaceindustries.com/pledge/ships',      desc: 'Offizieller Schiffs-Shop'                                },
+    ],
+  },
+  {
+    id: 'trade', label: 'Trading & Economy',
+    bg: 'linear-gradient(135deg,#0d3321 0%,#0a2518 100%)',
+    accent: '#22c55e', icon: '📈',
+    links: [
+      { name: 'SC Trade Tools',    url: 'https://sc-trade.tools',                               desc: 'Beste Handelsrouten & Profit',              badge: 'Top' },
+      { name: 'UEX Corp',          url: 'https://uexcorp.space',                                desc: 'Live-Marktpreise & Commodity-Daten',        badge: 'Live'},
+      { name: 'Gallog',            url: 'https://gallog.co',                                    desc: 'Cargo-Tracking & Reiselogbuch'                           },
+      { name: 'SC Market',         url: 'https://sc-market.space',                             desc: 'Spieler-Marktplatz für Items & Schiffe'                  },
+    ],
+  },
+  {
+    id: 'maps', label: 'Maps & Navigation',
+    bg: 'linear-gradient(135deg,#1e0d4a 0%,#160838 100%)',
+    accent: '#a855f7', icon: '🗺️',
+    links: [
+      { name: 'RSI Starmap',       url: 'https://starmap.robertsspaceindustries.com',           desc: 'Offizielle interaktive Sternenkarte'                     },
+      { name: 'Knightfall Map',    url: 'https://sc.knightfall.space',                          desc: 'Planeten, Monde & POIs',                    badge: 'Gut' },
+      { name: 'Wiki: Locations',   url: 'https://starcitizen.tools/Locations',                  desc: 'Landezonen, Shops & Outposts'                            },
+      { name: 'Mission-Übersicht', url: 'https://starcitizen.tools/List_of_missions',           desc: 'Alle Missions-Typen & Rewards'                          },
+    ],
+  },
+  {
+    id: 'patch', label: 'Patch & Roadmap',
+    bg: 'linear-gradient(135deg,#2d1a00 0%,#1f1200 100%)',
+    accent: '#f59e0b', icon: '📋',
+    links: [
+      { name: 'Release Roadmap',   url: 'https://robertsspaceindustries.com/roadmap/release-view',          desc: 'Was kommt in welchem Patch?'                },
+      { name: 'Progress Tracker',  url: 'https://robertsspaceindustries.com/roadmap/progress-tracker',      desc: 'Feature-Fortschritt aller Teams'            },
+      { name: 'Patchnotes',        url: 'https://robertsspaceindustries.com/patch-notes',                   desc: 'Live & PTU Release Notes'                   },
+      { name: 'isthisscup.com',    url: 'https://isthisscup.com',                                           desc: 'Server Up? Sofortcheck',    badge: 'Fun'    },
+    ],
+  },
+  {
+    id: 'community', label: 'Community & News',
+    bg: 'linear-gradient(135deg,#2d1400 0%,#1f0e00 100%)',
+    accent: '#f97316', icon: '💬',
+    links: [
+      { name: 'RSI Spectrum',      url: 'https://robertsspaceindustries.com/spectrum/community/SC',         desc: 'Offizielles Forum & Dev-Kommunikation'      },
+      { name: 'r/starcitizen',     url: 'https://www.reddit.com/r/starcitizen',                             desc: 'Reddit: News, Clips & Diskussionen'         },
+      { name: 'Comm-Link',         url: 'https://robertsspaceindustries.com/comm-link/',                    desc: 'Offizielle CIG-Ankündigungen & Lore'        },
+      { name: 'CIG YouTube',       url: 'https://www.youtube.com/@CIGCommunity',                            desc: 'Offizieller Entwickler-Kanal'               },
+    ],
+  },
+  {
+    id: 'tools', label: 'Tools & Account',
+    bg: 'linear-gradient(135deg,#0a2a2a 0%,#071e1e 100%)',
+    accent: '#14b8a6', icon: '⚙️',
+    links: [
+      { name: 'Star Citizen Wiki',  url: 'https://starcitizen.tools',                                       desc: 'Vollständiges Spiel-Lexikon',  badge: 'Ref' },
+      { name: 'RSI Account',        url: 'https://robertsspaceindustries.com/account',                      desc: 'Hangar & Kontoverwaltung'                   },
+      { name: 'RSI Launcher',       url: 'https://robertsspaceindustries.com/launcher',                     desc: 'Game-Client & PTU Download'                 },
+      { name: 'RSI Support',        url: 'https://support.robertsspaceindustries.com',                      desc: 'Bug-Reports & Ticket-System'                },
+    ],
+  },
+];
+
+// Badge-Farben
+const BADGE_COLORS = {
+  Top:  { bg: 'rgba(59,130,246,0.25)',  color: '#93c5fd' },
+  Live: { bg: 'rgba(34,197,94,0.25)',   color: '#86efac' },
+  Gut:  { bg: 'rgba(168,85,247,0.25)',  color: '#d8b4fe' },
+  Fun:  { bg: 'rgba(245,158,11,0.25)',  color: '#fcd34d' },
+  Ref:  { bg: 'rgba(20,184,166,0.25)',  color: '#5eead4' },
+};
+
+function QuickLinks() {
+  const [search, setSearch] = useState('');
+
+  // Suche: filtert über alle Kategorien und Links
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return LINK_CATS;
+    return LINK_CATS
+      .map(cat => ({
+        ...cat,
+        links: cat.links.filter(l =>
+          l.name.toLowerCase().includes(q) ||
+          l.desc.toLowerCase().includes(q) ||
+          cat.label.toLowerCase().includes(q)
+        ),
+      }))
+      .filter(cat => cat.links.length > 0);
+  }, [search]);
+
+  return (
+    <div>
+      {/* Suchfeld */}
+      <div className="relative mb-6 max-w-[360px]">
+        <Icon.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Suchen... (z.B. Erkul, Trade, Map)"
+          className="field w-full pl-9 !py-2.5"
+        />
+        {search && (
+          <button onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/35 hover:text-white text-sm">✕</button>
+        )}
+      </div>
+
+      {/* Kacheln-Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filtered.map(cat => (
+          <LinkCard key={cat.id} cat={cat} />
+        ))}
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="text-center py-16 text-white/35 text-[13px]">
+          <Icon.Search className="w-6 h-6 mx-auto mb-2 opacity-40" />
+          Keine Ergebnisse für &ldquo;{search}&rdquo;
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Einzelne Kachel-Karte für eine Kategorie
+function LinkCard({ cat }) {
+  return (
+    <div className="rounded-xl overflow-hidden border border-white/[0.08]"
+         style={{ background: cat.bg }}>
+
+      {/* Kachel-Header mit Kategorie-Icon und Titel */}
+      <div className="px-5 py-4 flex items-center gap-3"
+           style={{ borderBottom: `1px solid ${cat.accent}22` }}>
+        <span className="text-2xl">{cat.icon}</span>
+        <div>
+          <div className="text-[13px] font-semibold text-white/90">{cat.label}</div>
+          <div className="text-[11px]" style={{ color: cat.accent + 'aa' }}>
+            {cat.links.length} Links
+          </div>
+        </div>
+        {/* Farbiger Akzent-Punkt */}
+        <div className="ml-auto w-2 h-2 rounded-full flex-none"
+             style={{ background: cat.accent, boxShadow: `0 0 8px ${cat.accent}` }} />
+      </div>
+
+      {/* Link-Liste */}
+      <div className="p-2">
+        {cat.links.map((link, i) => (
+          <LinkRow key={i} link={link} accent={cat.accent} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Eine Link-Zeile innerhalb einer Kachel
+function LinkRow({ link, accent }) {
+  const [hovered, setHovered] = useState(false);
+  const badge = link.badge ? BADGE_COLORS[link.badge] : null;
+
+  return (
+    <a href={link.url} target="_blank" rel="noopener noreferrer"
+       className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all"
+       style={{ background: hovered ? 'rgba(255,255,255,0.07)' : 'transparent' }}
+       onMouseEnter={() => setHovered(true)}
+       onMouseLeave={() => setHovered(false)}>
+
+      {/* Aktiv-Balken links beim Hover */}
+      <div className="w-0.5 h-6 rounded-full flex-none transition-all"
+           style={{ background: hovered ? accent : 'transparent' }} />
+
+      {/* Text */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-medium text-white/90 truncate"
+             style={{ color: hovered ? accent : undefined }}>
+          {link.name}
+        </div>
+        <div className="text-[11px] text-white/40 truncate">{link.desc}</div>
+      </div>
+
+      {/* Badge */}
+      {badge && (
+        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full flex-none"
+              style={{ background: badge.bg, color: badge.color }}>
+          {link.badge}
+        </span>
+      )}
+
+      {/* Pfeil */}
+      <span className="text-[12px] flex-none transition-transform"
+            style={{ color: accent + '80', transform: hovered ? 'translateX(2px)' : 'none' }}>
+        →
+      </span>
+    </a>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -681,10 +1181,21 @@ function TopBar({ query, setQuery }) {
         </div>
       </div>
 
-      {/* Tab-Navigation — weitere Tabs folgen wenn fertig */}
+      {/* Tab-Navigation */}
       <nav className="hidden md:flex items-center gap-0.5 bg-white/[0.03] rounded-lg p-1 border border-white/[0.06]">
-        <button className="tab tab-active">Übersicht</button>
-        {['Item-DB', 'Trade', 'Mining', 'Schiffe'].map(t => (
+        <button onClick={() => window.__setTab && window.__setTab('status')}
+          className={`tab ${(!window.__tab || window.__tab === 'status') ? 'tab-active' : ''}`}>
+          Übersicht
+        </button>
+        <button onClick={() => window.__setTab && window.__setTab('links')}
+          className={`tab ${window.__tab === 'links' ? 'tab-active' : ''}`}>
+          Quick Links
+        </button>
+        <button onClick={() => window.__setTab && window.__setTab('items')}
+          className={`tab ${window.__tab === 'items' ? 'tab-active' : ''}`}>
+          Item-DB
+        </button>
+        {['Trade', 'Schiffe'].map(t => (
           <button key={t} className="tab opacity-40 cursor-default" title="In Entwicklung">{t}</button>
         ))}
       </nav>
@@ -781,6 +1292,11 @@ function App() {
   const [t, setTweak]         = useTweaks(TWEAK_DEFAULTS);
   const [section, setSection] = useState('status');
   const [query, setQuery]     = useState('');
+  const [tab, setTab]         = useState('status'); // 'status' | 'links' | 'items'
+
+  // Tab global verfügbar für TopBar (verhindert Prop-Drilling)
+  window.__tab    = tab;
+  window.__setTab = setTab;
 
   useEffect(() => { document.documentElement.style.setProperty('--blur', t.blur + 'px'); }, [t.blur]);
   useEffect(() => { document.body.classList.toggle('light', !t.dark); }, [t.dark]);
@@ -801,22 +1317,54 @@ function App() {
         <Sidebar section={section} setSection={setSection} />
 
         <main className="flex-1 min-w-0 space-y-6">
-          <div id="status">
-            <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
-              <div>
-                <div className="text-[12px] text-white/45 mb-2">Stanton System</div>
-                <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">
-                  Willkommen zurück, <span className="text-white/55">Luca</span>
-                </h1>
-                <p className="text-white/55 text-[14px] mt-2 max-w-[480px]">
-                  Star Citizen Command Hub — Alle wichtigen Daten an einem Ort.
-                </p>
+
+          {/* ── Tab: Übersicht ─────────────────────────────────────────── */}
+          {tab === 'status' && (
+            <div id="status">
+              <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
+                <div>
+                  <div className="text-[12px] text-white/45 mb-2">Stanton System</div>
+                  <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">
+                    Willkommen zurück, <span className="text-white/55">Luca</span>
+                  </h1>
+                  <p className="text-white/55 text-[14px] mt-2 max-w-[480px]">
+                    Star Citizen Command Hub — Alle wichtigen Daten an einem Ort.
+                  </p>
+                </div>
+              </div>
+              <div className="max-w-[640px]">
+                <ServerStatus />
               </div>
             </div>
-            <div className="max-w-[640px]">
-              <ServerStatus />
+          )}
+
+          {/* ── Tab: Quick Links ───────────────────────────────────────── */}
+          {tab === 'links' && (
+            <div id="links">
+              <div className="mb-6">
+                <div className="text-[12px] text-white/45 mb-2">Community Tools</div>
+                <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">Quick Links</h1>
+                <p className="text-white/55 text-[14px] mt-2">
+                  Alle wichtigen Star Citizen Tools auf einen Blick.
+                </p>
+              </div>
+              <QuickLinks />
             </div>
-          </div>
+          )}
+
+          {/* ── Tab: Item-Datenbank ───────────────────────────────────── */}
+          {tab === 'items' && (
+            <div id="items">
+              <div className="mb-6">
+                <div className="text-[12px] text-white/45 mb-2">Star Citizen Wiki</div>
+                <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">Item-Datenbank</h1>
+                <p className="text-white/55 text-[14px] mt-2">
+                  Waffen, Rüstungen, Schiffskomponenten — direkt aus der SC Wiki.
+                </p>
+              </div>
+              <ItemDatabase />
+            </div>
+          )}
 
           <footer className="pt-6 pb-4 text-center cap">
             SC Navigator · inoffizielles Fan-Dashboard · nicht verbunden mit CIG
