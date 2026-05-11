@@ -1,6 +1,5 @@
-# update-items.yml
-# Nutzt den Cloudflare Worker als Proxy damit GitHub Actions
-# nicht von Cloudflare/UEX Corp geblockt wird.
+# update-items.yml — UEX Corp Items Cache (Waffen, Rüstungen, Schiffskomponenten)
+# Endpoint: /items + /items_prices (nicht /commodities)
 
 name: Update Items Cache (UEX Corp)
 
@@ -18,32 +17,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Commodity-Liste laden (via Worker)
+      - name: Item-Liste laden (via Worker)
         run: |
-          echo "→ Lade Commodities..."
-          HTTP=$(curl -s -o /tmp/commodities.json -w "%{http_code}" \
+          echo "→ Lade Items..."
+          HTTP=$(curl -s -o /tmp/items.json -w "%{http_code}" \
             --max-time 30 \
-            "https://sc-uex-proxy.lucatheis8.workers.dev/commodities")
-
+            "https://sc-uex-proxy.lucatheis8.workers.dev/items")
           echo "  HTTP Status: $HTTP"
           if [ "$HTTP" != "200" ]; then
-            echo "  Antwort:"; cat /tmp/commodities.json
-            exit 1
+            echo "  Antwort:"; cat /tmp/items.json; exit 1
           fi
-          echo "  Zeilen: $(wc -c < /tmp/commodities.json) bytes"
+          echo "  Größe: $(wc -c < /tmp/items.json) bytes"
 
-      - name: Preise laden (via Worker)
+      - name: Item-Preise laden (via Worker)
         run: |
-          echo "→ Lade Preise..."
-          HTTP=$(curl -s -o /tmp/prices.json -w "%{http_code}" \
-            --max-time 60 \
-            "https://sc-uex-proxy.lucatheis8.workers.dev/commodities_prices")
-
+          echo "→ Lade Item-Preise..."
+          HTTP=$(curl -s -o /tmp/items_prices.json -w "%{http_code}" \
+            --max-time 90 \
+            "https://sc-uex-proxy.lucatheis8.workers.dev/items_prices")
           echo "  HTTP Status Prices: $HTTP"
           if [ "$HTTP" != "200" ]; then
-            echo "  Preise nicht verfügbar (HTTP $HTTP) — fahre fort"
-            echo "[]" > /tmp/prices.json
+            echo "  Preise nicht verfügbar (HTTP $HTTP)"
+            echo "[]" > /tmp/items_prices.json
           fi
+          echo "  Größe: $(wc -c < /tmp/items_prices.json) bytes"
 
       - name: Daten verarbeiten
         run: python3 scripts/process-items.py
