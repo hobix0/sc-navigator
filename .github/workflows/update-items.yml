@@ -1,5 +1,8 @@
-# update-items.yml — UEX Corp Items Cache (Waffen, Rüstungen, Schiffskomponenten)
-# Endpoint: /items + /items_prices (nicht /commodities)
+# update-items.yml
+# Das Python-Script übernimmt jetzt alle API-Calls selbst:
+#   - Kategorien laden
+#   - Items pro Kategorie laden
+#   - Preise pro Kategorie laden
 
 name: Update Items Cache (UEX Corp)
 
@@ -17,32 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Item-Liste laden (via Worker)
-        run: |
-          echo "→ Lade Items..."
-          HTTP=$(curl -s -o /tmp/items.json -w "%{http_code}" \
-            --max-time 30 \
-            "https://sc-uex-proxy.lucatheis8.workers.dev/items")
-          echo "  HTTP Status: $HTTP"
-          if [ "$HTTP" != "200" ]; then
-            echo "  Antwort:"; cat /tmp/items.json; exit 1
-          fi
-          echo "  Größe: $(wc -c < /tmp/items.json) bytes"
-
-      - name: Item-Preise laden (via Worker)
-        run: |
-          echo "→ Lade Item-Preise..."
-          HTTP=$(curl -s -o /tmp/items_prices.json -w "%{http_code}" \
-            --max-time 90 \
-            "https://sc-uex-proxy.lucatheis8.workers.dev/items_prices")
-          echo "  HTTP Status Prices: $HTTP"
-          if [ "$HTTP" != "200" ]; then
-            echo "  Preise nicht verfügbar (HTTP $HTTP)"
-            echo "[]" > /tmp/items_prices.json
-          fi
-          echo "  Größe: $(wc -c < /tmp/items_prices.json) bytes"
-
-      - name: Daten verarbeiten
+      - name: Items laden und verarbeiten
         run: python3 scripts/process-items.py
 
       - name: Committen und pushen
