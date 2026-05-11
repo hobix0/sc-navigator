@@ -1,6 +1,6 @@
 # update-items.yml
-# Fix: Python-Code in scripts/process-items.py ausgelagert
-# (inline heredoc << kollidierte mit YAML-Syntax)
+# Nutzt den Cloudflare Worker als Proxy damit GitHub Actions
+# nicht von Cloudflare/UEX Corp geblockt wird.
 
 name: Update Items Cache (UEX Corp)
 
@@ -18,43 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Commodity-Liste laden
-        env:
-          UEXCORP_KEY: ${{ secrets.UEXCORP_API_KEY }}
+      - name: Commodity-Liste laden (via Worker)
         run: |
           echo "→ Lade Commodities..."
           HTTP=$(curl -s -o /tmp/commodities.json -w "%{http_code}" \
             --max-time 30 \
-            -H "Accept: application/json" \
-            -H "User-Agent: SC-Navigator/1.0" \
-            -H "Authorization: Bearer ${UEXCORP_KEY:-public}" \
-            "https://api.uexcorp.space/2.0/commodities")
+            "https://sc-uex-proxy.lucatheis8.workers.dev/commodities")
 
           echo "  HTTP Status: $HTTP"
           if [ "$HTTP" != "200" ]; then
-            echo "  API Antwort:"; cat /tmp/commodities.json
-            if [ "$HTTP" = "401" ] || [ "$HTTP" = "403" ]; then
-              echo "❌ API Key fehlt. Bitte UEXCORP_API_KEY als GitHub Secret hinterlegen."
-              echo "   https://uexcorp.space/api.html → kostenlos registrieren"
-            fi
+            echo "  Antwort:"; cat /tmp/commodities.json
             exit 1
           fi
+          echo "  Zeilen: $(wc -c < /tmp/commodities.json) bytes"
 
-      - name: Preise laden
-        env:
-          UEXCORP_KEY: ${{ secrets.UEXCORP_API_KEY }}
+      - name: Preise laden (via Worker)
         run: |
           echo "→ Lade Preise..."
           HTTP=$(curl -s -o /tmp/prices.json -w "%{http_code}" \
             --max-time 60 \
-            -H "Accept: application/json" \
-            -H "User-Agent: SC-Navigator/1.0" \
-            -H "Authorization: Bearer ${UEXCORP_KEY:-public}" \
-            "https://api.uexcorp.space/2.0/commodities_prices")
+            "https://sc-uex-proxy.lucatheis8.workers.dev/commodities_prices")
 
           echo "  HTTP Status Prices: $HTTP"
           if [ "$HTTP" != "200" ]; then
-            echo "  Preise nicht verfügbar (HTTP $HTTP) — fahre mit leerer Preisliste fort"
+            echo "  Preise nicht verfügbar (HTTP $HTTP) — fahre fort"
             echo "[]" > /tmp/prices.json
           fi
 
