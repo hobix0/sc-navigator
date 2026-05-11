@@ -1,0 +1,18 @@
+{
+  "status": {
+    "indicator": "none",
+    "description": "All Systems Operational"
+  },
+  "components": [
+    { "name": "Persistent Universe",       "status": "operational" },
+    { "name": "Electronic Access",         "status": "operational" },
+    { "name": "Star Citizen Tech Preview", "status": "operational" },
+    { "name": "Roberts Space Industries",  "status": "operational" },
+    { "name": "RSI Launcher",              "status": "operational" },
+    { "name": "Issue Council",             "status": "operational" }
+  ],
+  "incidents": [],
+  "scheduled_maintenances": [],
+  "_cached_at": "2025-01-01T00:00:00.000Z",
+  "_note": "Platzhalterdaten — werden vom GitHub Action alle 5 Minuten aktualisiert"
+}

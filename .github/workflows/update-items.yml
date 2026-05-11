@@ -1,0 +1,167 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# update-items.yml
+#
+# Fetcht täglich alle Commodities + Preise von der UEX Corp API v2
+# und speichert sie als data-items.json im Repo.
+#
+# Was dieser Script macht:
+#   1. Holt die Commodity-Liste  (/2.0/commodities)
+#   2. Holt alle Terminal-Preise (/2.0/commodities_prices)
+#   3. Berechnet pro Commodity: besten Kaufpreis, besten Verkaufspreis, Profit
+#   4. Schreibt data-items.json → GitHub Pages serviert es same-origin
+#
+# Brauchst du einen UEX Corp API Key?
+#   Nein — für Commodity-Daten ist kein Key nötig.
+#   Für erweiterte Item-Daten (Schiffskomponenten, FPS-Waffen) ggf. schon.
+#   Key anlegen: https://uexcorp.space/api.html → kostenlos registrieren
+#   Key als Secret: GitHub Repo → Settings → Secrets → UEXCORP_API_KEY
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Update Items Cache (UEX Corp)
+
+on:
+  # Einmal täglich um 06:00 UTC (Preise ändern sich nicht stündlich)
+  schedule:
+    - cron: '0 6 * * *'
+  # Manuell auslösbar
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: UEX Corp API abrufen und verarbeiten
+        env:
+          # Optional: UEX Corp API Key (als Secret hinterlegen falls nötig)
+          UEXCORP_KEY: ${{ secrets.UEXCORP_API_KEY }}
+        run: |
+          # Header zusammenstellen (mit oder ohne API Key)
+          if [ -n "$UEXCORP_KEY" ]; then
+            AUTH_HEADER="-H \"Authorization: Bearer $UEXCORP_KEY\""
+          else
+            AUTH_HEADER=""
+          fi
+
+          echo "→ Lade Commodity-Liste..."
+          curl -sf --max-time 30 \
+            -H "Accept: application/json" \
+            $AUTH_HEADER \
+            "https://api.uexcorp.space/2.0/commodities" \
+            -o /tmp/commodities.json
+
+          echo "→ Lade Preise..."
+          curl -sf --max-time 60 \
+            -H "Accept: application/json" \
+            $AUTH_HEADER \
+            "https://api.uexcorp.space/2.0/commodities_prices" \
+            -o /tmp/prices.json
+
+          echo "→ Verarbeite Daten..."
+          python3 << 'PYEOF'
+          import json, sys
+          from datetime import datetime, timezone
+
+          # ── Daten laden ────────────────────────────────────────────────────
+          with open('/tmp/commodities.json') as f:
+              raw_comms = json.load(f)
+          with open('/tmp/prices.json') as f:
+              raw_prices = json.load(f)
+
+          commodities = raw_comms.get('data') or raw_comms if isinstance(raw_comms, list) else []
+          prices      = raw_prices.get('data') or raw_prices if isinstance(raw_prices, list) else []
+
+          print(f"  Commodities: {len(commodities)}")
+          print(f"  Preiseinträge: {len(prices)}")
+
+          # ── Preise gruppieren: commodity_id → buy-Liste + sell-Liste ───────
+          buy_prices  = {}   # { commodity_id: [(price, terminal_name)] }
+          sell_prices = {}
+
+          for p in prices:
+              cid = p.get('id_commodity')
+              if not cid:
+                  continue
+
+              terminal = p.get('terminal_name') or p.get('star_system_name') or '?'
+
+              price_buy  = p.get('price_buy',  0) or 0
+              price_sell = p.get('price_sell', 0) or 0
+
+              if price_buy > 0:
+                  buy_prices.setdefault(cid, []).append({
+                      'price': price_buy,
+                      'terminal': terminal,
+                      'scu_available': p.get('scu_buy_stock', 0) or 0,
+                  })
+              if price_sell > 0:
+                  sell_prices.setdefault(cid, []).append({
+                      'price': price_sell,
+                      'terminal': terminal,
+                      'scu_available': p.get('scu_sell_stock', 0) or 0,
+                  })
+
+          # ── Für jede Commodity besten Kauf/Verkauf berechnen ───────────────
+          items = []
+          for c in commodities:
+              cid  = c.get('id')
+              name = c.get('name') or c.get('code') or '?'
+              kind = c.get('kind') or c.get('type') or '—'
+              code = c.get('code') or ''
+
+              buys  = sorted(buy_prices.get(cid,  []), key=lambda x: x['price'])       # günstigster Kauf
+              sells = sorted(sell_prices.get(cid, []), key=lambda x: -x['price'])      # teuerster Verkauf
+
+              best_buy  = buys[0]  if buys  else None
+              best_sell = sells[0] if sells else None
+
+              profit = 0
+              if best_buy and best_sell:
+                  profit = round(best_sell['price'] - best_buy['price'], 2)
+
+              items.append({
+                  'id':          cid,
+                  'name':        name,
+                  'code':        code,
+                  'kind':        kind,
+                  'is_illegal':  bool(c.get('is_illegal', 0)),
+                  'is_extracted': bool(c.get('is_extracted', 0)),
+                  'is_mineral':  bool(c.get('is_mineral', 0)),
+                  'best_buy':    best_buy,
+                  'best_sell':   best_sell,
+                  'profit':      profit,
+                  'buy_count':   len(buys),
+                  'sell_count':  len(sells),
+              })
+
+          # Nach Name sortieren
+          items.sort(key=lambda x: x['name'].lower())
+
+          # ── Ausgabedatei schreiben ─────────────────────────────────────────
+          output = {
+              '_cached_at': datetime.now(timezone.utc).isoformat(),
+              '_source':    'UEX Corp API v2 — https://uexcorp.space',
+              '_count':     len(items),
+              'items':      items,
+          }
+
+          with open('data-items.json', 'w') as f:
+              json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
+
+          print(f"  ✓ {len(items)} Items geschrieben → data-items.json")
+          print(f"  ✓ Zeitstempel: {output['_cached_at']}")
+          PYEOF
+
+      - name: Änderungen committen
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data-items.json
+          git diff --staged --quiet \
+            && echo "Keine Änderungen — kein Commit nötig." \
+            || git commit -m "chore: update items cache (UEX Corp) [skip ci]" && git push

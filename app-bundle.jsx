@@ -69,7 +69,20 @@ function Bar({ value, kind = 'rsi', className = '' }) {
 //   components[].status → 'operational' | 'degraded_performance' | 'partial_outage'
 //                         | 'major_outage' | 'under_maintenance'
 
-const RSI_STATUS_URL = 'https://status.robertsspaceindustries.com/api/v2/summary.json';
+// ── RSI Status — lokal gecachte Datei ────────────────────────────────────────
+// Der GitHub Action "Update RSI Status Cache" fetcht alle 5 Minuten die RSI API
+// und speichert das Ergebnis als rsi-status.json im Repo.
+// Das Frontend liest diese Datei von der eigenen Domain → kein CORS, kein Proxy.
+//
+// Pfad auf GitHub Pages: https://hobix0.github.io/SC-Navigator/rsi-status.json
+const RSI_STATUS_URL = './rsi-status.json';
+
+// Einfacher Fetch — kein Proxy nötig da same-origin
+async function fetchStatusWithFallback() {
+  const res = await fetch(RSI_STATUS_URL, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 // Deutsch-Übersetzung + Reihenfolge der RSI-Komponenten die wir anzeigen wollen.
 // Namen müssen exakt mit der API übereinstimmen (case-insensitive Vergleich unten).
@@ -115,20 +128,11 @@ function ServerStatus() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(RSI_STATUS_URL, {
-        // cache: 'no-store' verhindert Browser-Caching der Status-Antwort
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json = await fetchStatusWithFallback();
       setData(json);
       setUpdatedAt(new Date().toISOString());
     } catch (err) {
-      // CORS-Fehler oder Netzwerkfehler — zeige Fallback-Meldung
-      setError(err.message.includes('Failed to fetch')
-        ? 'CORS-Fehler: API nicht direkt erreichbar. Bitte Backend-Proxy einrichten.'
-        : `Fehler: ${err.message}`
-      );
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -165,9 +169,12 @@ function ServerStatus() {
   const incidents     = data?.incidents?.filter(i => i.status !== 'resolved') || [];
   const maintenances  = data?.scheduled_maintenances?.filter(m => m.status === 'in_progress') || [];
 
+  // Zeitstempel "_cached_at" aus der gecachten Datei (vom GitHub Action gesetzt)
+  const cacheAge = data?._cached_at ? timeAgo(data._cached_at) : null;
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Panel title="Server Status" sub="Roberts Space Industries · Live" strong dense
+    <Panel title="Server Status" sub={cacheAge ? `RSI · Cache ${cacheAge}` : 'Roberts Space Industries'}  strong dense
       right={
         overall
           ? <span className={`chip chip-${overall.kind}`}><span className={`dot ${overall.dot}`}></span>{overall.statusLabel}</span>
@@ -188,11 +195,10 @@ function ServerStatus() {
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-[12.5px] text-red-300/80 leading-relaxed">
           <div className="font-semibold mb-1 text-red-300">Verbindungsfehler</div>
           {error}
-          <div className="mt-2 text-white/40">
-            Status manuell prüfen:{' '}
+          <div className="mt-2.5">
             <a href="https://status.robertsspaceindustries.com" target="_blank" rel="noopener noreferrer"
-              className="text-white/60 underline hover:text-white">
-              status.robertsspaceindustries.com
+              className="inline-flex items-center gap-1.5 text-white/55 hover:text-white underline text-[12px]">
+              Status manuell prüfen →
             </a>
           </div>
         </div>
@@ -658,6 +664,257 @@ function ToolGrid() {
 */
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ITEM-DATENBANK — gecacht via GitHub Action (update-items.yml)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ItemDatabase
+// Liest ./data-items.json (täglich vom GitHub Action befüllt).
+// Zeigt alle Commodities mit Best-Buy, Best-Sell und Profit pro SCU.
+// Suchbar + filterbar nach Kategorie + sortierbar.
+function ItemDatabase() {
+  const [data,     setData]     = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(null);
+  const [search,   setSearch]   = useState('');
+  const [kind,     setKind]     = useState('Alle');
+  const [sortBy,   setSortBy]   = useState('profit');
+  const [sortDir,  setSortDir]  = useState('desc');
+
+  // Daten laden beim Mount
+  useEffect(() => {
+    fetch('./data-items.json', { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { setData(d); setLoading(false); })
+      .catch(e => { setError(e.message); setLoading(false); });
+  }, []);
+
+  // Alle vorhandenen Kategorien aus den Daten ableiten
+  const kinds = useMemo(() => {
+    if (!data?.items?.length) return ['Alle'];
+    const set = new Set(data.items.map(i => i.kind).filter(Boolean));
+    return ['Alle', ...Array.from(set).sort()];
+  }, [data]);
+
+  // Gefilterte + sortierte Liste
+  const items = useMemo(() => {
+    if (!data?.items) return [];
+    let list = data.items;
+
+    // Kategorie-Filter
+    if (kind !== 'Alle') list = list.filter(i => i.kind === kind);
+
+    // Volltextsuche über Name + Code
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        (i.code || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Sortierung
+    list = [...list].sort((a, b) => {
+      let va, vb;
+      if (sortBy === 'profit')    { va = a.profit || 0;              vb = b.profit || 0; }
+      else if (sortBy === 'buy')  { va = a.best_buy?.price || 0;     vb = b.best_buy?.price || 0; }
+      else if (sortBy === 'sell') { va = a.best_sell?.price || 0;    vb = b.best_sell?.price || 0; }
+      else                        { va = a.name.toLowerCase();        vb = b.name.toLowerCase(); }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [data, search, kind, sortBy, sortDir]);
+
+  // Sortier-Toggle: gleiches Feld → Richtung umkehren, neues Feld → desc
+  function toggleSort(col) {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('desc'); }
+  }
+
+  const SortIcon = ({ col }) => (
+    <span className="opacity-40 ml-0.5">
+      {sortBy === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+    </span>
+  );
+
+  // Preis formatieren: 1234.5 → "1.234,5 aUEC"
+  function fmtPrice(p) {
+    if (!p) return '—';
+    return Number(p).toLocaleString('de-DE') + ' aUEC';
+  }
+
+  const cacheAge = data?._cached_at ? timeAgo(data._cached_at) : null;
+
+  return (
+    <div>
+      {/* Controls */}
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        {/* Suche */}
+        <div className="relative flex-1 min-w-[200px] max-w-[280px]">
+          <Icon.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Name oder Code suchen…"
+            className="field w-full pl-9 !py-2 !text-[13px]"
+          />
+        </div>
+
+        {/* Kategorie-Filter */}
+        <div className="flex gap-1 flex-wrap">
+          {kinds.map(k => (
+            <button key={k} onClick={() => setKind(k)}
+              className={`tab ${kind === k ? 'tab-active' : ''}`}>
+              {k}
+            </button>
+          ))}
+        </div>
+
+        {/* Treffer-Zahl + Cache-Info */}
+        <div className="ml-auto text-[11.5px] text-white/40 flex flex-col items-end">
+          <span>{items.length} Items</span>
+          {cacheAge && <span>Cache: {cacheAge}</span>}
+        </div>
+      </div>
+
+      {/* Ladezustand */}
+      {loading && (
+        <div className="glass text-center py-12 text-white/40 text-[13px]">
+          <Icon.Refresh className="w-5 h-5 mx-auto mb-2 opacity-40 animate-spin" />
+          Lade Item-Datenbank…
+        </div>
+      )}
+
+      {/* Fehler */}
+      {error && !loading && (
+        <div className="glass rounded-lg border border-red-500/20 bg-red-500/5 p-5 text-[13px] text-red-300/80">
+          <div className="font-semibold mb-1">Fehler beim Laden</div>
+          {error}
+          <div className="mt-2 text-white/40 text-[12px]">
+            Stelle sicher dass der GitHub Action "Update Items Cache" einmal ausgeführt wurde.
+          </div>
+        </div>
+      )}
+
+      {/* Leerer Zustand — Action noch nicht gelaufen */}
+      {!loading && !error && data?._count === 0 && (
+        <div className="glass text-center py-12 text-white/40 text-[13px]">
+          <Icon.Cube className="w-8 h-8 mx-auto mb-3 opacity-30" />
+          <div className="mb-1">Noch keine Daten vorhanden</div>
+          <div className="text-[12px]">
+            Führe den GitHub Action "Update Items Cache (UEX Corp)" einmal manuell aus:
+            <br />GitHub Repo → Actions → Update Items Cache → Run workflow
+          </div>
+        </div>
+      )}
+
+      {/* Tabelle */}
+      {!loading && !error && items.length > 0 && (
+        <div className="glass overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-white/[0.06]">
+                  <th className="cap text-left px-4 py-3 cursor-pointer hover:text-white/70"
+                      onClick={() => toggleSort('name')}>
+                    Name <SortIcon col="name" />
+                  </th>
+                  <th className="cap text-left px-3 py-3 hidden sm:table-cell">Code</th>
+                  <th className="cap text-left px-3 py-3 hidden md:table-cell">Kategorie</th>
+                  <th className="cap text-right px-3 py-3 cursor-pointer hover:text-white/70"
+                      onClick={() => toggleSort('buy')}>
+                    Kaufen min. <SortIcon col="buy" />
+                  </th>
+                  <th className="cap text-right px-3 py-3 cursor-pointer hover:text-white/70"
+                      onClick={() => toggleSort('sell')}>
+                    Verkaufen max. <SortIcon col="sell" />
+                  </th>
+                  <th className="cap text-right px-4 py-3 cursor-pointer hover:text-white/70"
+                      onClick={() => toggleSort('profit')}>
+                    Profit/SCU <SortIcon col="profit" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, i) => (
+                  <tr key={item.id || i}
+                      className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white/90">{item.name}</span>
+                        {item.is_illegal && (
+                          <span className="chip chip-crit text-[9px] px-1.5 py-0.5">illegal</span>
+                        )}
+                      </div>
+                      {/* Auf Mobile: Zusatzinfos inline */}
+                      {item.best_buy?.terminal && (
+                        <div className="text-[11px] text-white/35 mt-0.5 sm:hidden">
+                          {item.best_buy.terminal}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 hidden sm:table-cell">
+                      <code className="text-[11px] text-white/45 font-mono">{item.code}</code>
+                    </td>
+                    <td className="px-3 py-3 hidden md:table-cell">
+                      <span className="chip">{item.kind}</span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {item.best_buy ? (
+                        <div>
+                          <div className="font-mono text-white/80 tabular-nums">
+                            {fmtPrice(item.best_buy.price)}
+                          </div>
+                          <div className="text-[10.5px] text-white/35 truncate max-w-[120px] ml-auto">
+                            {item.best_buy.terminal}
+                          </div>
+                        </div>
+                      ) : <span className="text-white/25">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {item.best_sell ? (
+                        <div>
+                          <div className="font-mono text-emerald-400/90 tabular-nums font-medium">
+                            {fmtPrice(item.best_sell.price)}
+                          </div>
+                          <div className="text-[10.5px] text-white/35 truncate max-w-[120px] ml-auto">
+                            {item.best_sell.terminal}
+                          </div>
+                        </div>
+                      ) : <span className="text-white/25">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {item.profit > 0 ? (
+                        <span className={`font-mono font-semibold tabular-nums ${
+                          item.profit > 500 ? 'text-emerald-400' :
+                          item.profit > 100 ? 'text-emerald-400/70' : 'text-white/55'
+                        }`}>
+                          +{Number(item.profit).toLocaleString('de-DE')}
+                        </span>
+                      ) : (
+                        <span className="text-white/20">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-3 border-t border-white/[0.06] flex items-center justify-between text-[11.5px] text-white/40">
+            <span>Quelle: UEX Corp API v2 — uexcorp.space</span>
+            {cacheAge && <span>Zuletzt aktualisiert: {cacheAge}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -675,9 +932,16 @@ function TopBar({ query, setQuery }) {
         </div>
       </div>
 
-      {/* Tab-Navigation — nur Übersicht aktiv, Rest folgt */}
+      {/* Tab-Navigation */}
       <nav className="hidden md:flex items-center gap-0.5 bg-white/[0.03] rounded-lg p-1 border border-white/[0.06]">
-        <button className="tab tab-active">Übersicht</button>
+        <button onClick={() => window.setAppTab && window.setAppTab('overview')}
+          className={`tab ${!window._activeTab || window._activeTab === 'overview' ? 'tab-active' : ''}`}>
+          Übersicht
+        </button>
+        <button onClick={() => window.setAppTab && window.setAppTab('items')}
+          className={`tab ${window._activeTab === 'items' ? 'tab-active' : ''}`}>
+          Item-DB
+        </button>
         {['Trade', 'Mining', 'Schiffe'].map(t => (
           <button key={t} className="tab opacity-40 cursor-default" title="Coming soon">{t}</button>
         ))}
@@ -772,9 +1036,14 @@ function MyTweaks({ t, setTweak }) {
 }
 
 function App() {
-  const [t, setTweak]   = useTweaks(TWEAK_DEFAULTS);
+  const [t, setTweak]         = useTweaks(TWEAK_DEFAULTS);
   const [section, setSection] = useState('status');
   const [query, setQuery]     = useState('');
+  const [tab, setTab]         = useState('overview'); // 'overview' | 'items'
+
+  // Tab-State global verfügbar machen für TopBar (kein Prop-Drilling durch alle Ebenen)
+  window.setAppTab   = setTab;
+  window._activeTab  = tab;
 
   // Blur-CSS-Variable und Dark-Mode-Klasse aus Tweaks-State synchronisieren
   useEffect(() => { document.documentElement.style.setProperty('--blur', t.blur + 'px'); }, [t.blur]);
@@ -797,47 +1066,41 @@ function App() {
 
         <main className="flex-1 min-w-0 space-y-6">
 
-          {/* ── Übersicht: Server Status ─────────────────────────────────── */}
-          <div id="status">
-            <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
-              <div>
-                <div className="text-[12px] text-white/45 mb-2">Stanton System</div>
-                <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">
-                  Willkommen zurück, <span className="text-white/55">Luca</span>
-                </h1>
-                <p className="text-white/55 text-[14px] mt-2 max-w-[480px]">
-                  Star Citizen Command Hub — Alle wichtigen Daten an einem Ort.
-                </p>
+          {/* ── Tab: Übersicht ───────────────────────────────────────────── */}
+          {tab === 'overview' && (
+            <div id="status">
+              <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
+                <div>
+                  <div className="text-[12px] text-white/45 mb-2">Stanton System</div>
+                  <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">
+                    Willkommen zurück, <span className="text-white/55">Luca</span>
+                  </h1>
+                  <p className="text-white/55 text-[14px] mt-2 max-w-[480px]">
+                    Star Citizen Command Hub — Alle wichtigen Daten an einem Ort.
+                  </p>
+                </div>
+              </div>
+              <div className="max-w-[640px]">
+                <ServerStatus />
               </div>
             </div>
+          )}
 
-            {/* ServerStatus — echte RSI API Daten */}
-            <div className="max-w-[640px]">
-              <ServerStatus />
+          {/* ── Tab: Item-Datenbank ──────────────────────────────────────── */}
+          {tab === 'items' && (
+            <div id="items">
+              <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
+                <div>
+                  <div className="text-[12px] text-white/45 mb-2">UEX Corp · Täglich aktualisiert</div>
+                  <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">Item-Datenbank</h1>
+                  <p className="text-white/55 text-[14px] mt-2 max-w-[480px]">
+                    Alle Commodities mit Kaufpreis, Verkaufspreis und Profit pro SCU.
+                  </p>
+                </div>
+              </div>
+              <ItemDatabase />
             </div>
-          </div>
-
-          {/*
-            Weitere Sektionen — werden hier einkommentiert wenn bereit:
-
-            <QuickActions />
-
-            <div id="trade" className="sec-h"><span>Operations</span><span className="sec-h-sub">Trade · Mining · Bounty</span></div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <TradeRoutes />
-              <RefineryTimer />
-              <BountyTracker />
-            </div>
-
-            <div id="tools" className="sec-h"><span>Tools & Ressourcen</span></div>
-            <ToolGrid />
-
-            <div id="watch" className="sec-h"><span>Markt & Universum</span></div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Watchlist />
-              <EventsPanel />
-            </div>
-          */}
+          )}
 
           <footer className="pt-6 pb-4 text-center cap">
             SC Navigator · inoffizielles Fan-Dashboard · nicht verbunden mit CIG
