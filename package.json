@@ -2,6 +2,7 @@
   "name": "sc-navigator",
   "version": "1.0.0",
   "description": "Modern minimal dashboard for Star Citizen tools, trade routes, mining timers, bounties and hangar overview.",
+  "homepage": "https://hobix0.github.io/SC-Navigator/",
   "scripts": {
     "dev":   "npx serve . -l 8000",
     "start": "npx serve . -l 8000"
