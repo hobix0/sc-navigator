@@ -1,5 +1,6 @@
-# update-items.yml — UEX Corp Commodity Cache
-# Fix: curl -f entfernt, HTTP-Status-Prüfung explizit, Debug-Output hinzugefügt
+# update-items.yml
+# Fix: Python-Code in scripts/process-items.py ausgelagert
+# (inline heredoc << kollidierte mit YAML-Syntax)
 
 name: Update Items Cache (UEX Corp)
 
@@ -17,99 +18,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: UEX Corp API abrufen und verarbeiten
+      - name: Commodity-Liste laden
         env:
           UEXCORP_KEY: ${{ secrets.UEXCORP_API_KEY }}
         run: |
-          # ── Commodities ────────────────────────────────────────────────────
-          echo "→ Lade Commodity-Liste..."
-          HTTP_COMM=$(curl -s -o /tmp/commodities.json -w "%{http_code}" \
+          echo "→ Lade Commodities..."
+          HTTP=$(curl -s -o /tmp/commodities.json -w "%{http_code}" \
             --max-time 30 \
             -H "Accept: application/json" \
-            -H "User-Agent: SC-Navigator/1.0 (github.com/Hobix0/SC-Navigator)" \
-            ${UEXCORP_KEY:+-H "Authorization: Bearer $UEXCORP_KEY"} \
+            -H "User-Agent: SC-Navigator/1.0" \
+            -H "Authorization: Bearer ${UEXCORP_KEY:-public}" \
             "https://api.uexcorp.space/2.0/commodities")
 
-          echo "  HTTP Status: $HTTP_COMM"
-
-          # Bei Fehler: Antwort ausgeben damit wir den Grund sehen
-          if [ "$HTTP_COMM" != "200" ]; then
-            echo "  Antwort der API:"
-            cat /tmp/commodities.json
-            echo ""
-            if [ "$HTTP_COMM" = "401" ] || [ "$HTTP_COMM" = "403" ]; then
-              echo "❌ API Key benötigt."
-              echo "   1. Kostenlos registrieren: https://uexcorp.space/api.html"
-              echo "   2. Key in GitHub hinterlegen: Settings → Secrets → UEXCORP_API_KEY"
-            else
-              echo "❌ Unerwarteter Status: $HTTP_COMM"
+          echo "  HTTP Status: $HTTP"
+          if [ "$HTTP" != "200" ]; then
+            echo "  API Antwort:"; cat /tmp/commodities.json
+            if [ "$HTTP" = "401" ] || [ "$HTTP" = "403" ]; then
+              echo "❌ API Key fehlt. Bitte UEXCORP_API_KEY als GitHub Secret hinterlegen."
+              echo "   https://uexcorp.space/api.html → kostenlos registrieren"
             fi
             exit 1
           fi
 
-          # ── Preise ──────────────────────────────────────────────────────────
+      - name: Preise laden
+        env:
+          UEXCORP_KEY: ${{ secrets.UEXCORP_API_KEY }}
+        run: |
           echo "→ Lade Preise..."
-          HTTP_PRICES=$(curl -s -o /tmp/prices.json -w "%{http_code}" \
+          HTTP=$(curl -s -o /tmp/prices.json -w "%{http_code}" \
             --max-time 60 \
             -H "Accept: application/json" \
-            -H "User-Agent: SC-Navigator/1.0 (github.com/Hobix0/SC-Navigator)" \
-            ${UEXCORP_KEY:+-H "Authorization: Bearer $UEXCORP_KEY"} \
+            -H "User-Agent: SC-Navigator/1.0" \
+            -H "Authorization: Bearer ${UEXCORP_KEY:-public}" \
             "https://api.uexcorp.space/2.0/commodities_prices")
 
-          echo "  HTTP Status Prices: $HTTP_PRICES"
-          if [ "$HTTP_PRICES" != "200" ]; then
-            echo "  Preise nicht verfügbar — nur Commodity-Namen werden geladen"
+          echo "  HTTP Status Prices: $HTTP"
+          if [ "$HTTP" != "200" ]; then
+            echo "  Preise nicht verfügbar (HTTP $HTTP) — fahre mit leerer Preisliste fort"
             echo "[]" > /tmp/prices.json
           fi
 
-          # ── Python: zusammenführen ──────────────────────────────────────────
-          echo "→ Verarbeite Daten..."
-          python3 << 'PYEOF'
-import json
-from datetime import datetime, timezone
-
-with open('/tmp/commodities.json') as f:
-    raw = json.load(f)
-with open('/tmp/prices.json') as f:
-    raw_prices = json.load(f)
-
-commodities = raw.get('data', raw) if isinstance(raw, dict) else raw
-prices      = raw_prices.get('data', raw_prices) if isinstance(raw_prices, dict) else raw_prices
-if not isinstance(commodities, list): commodities = []
-if not isinstance(prices, list):      prices = []
-
-print(f"  Commodities: {len(commodities)}, Preiseinträge: {len(prices)}")
-
-buy_prices, sell_prices = {}, {}
-for p in prices:
-    cid = p.get('id_commodity')
-    if not cid: continue
-    terminal = p.get('terminal_name') or '?'
-    pb = float(p.get('price_buy', 0) or 0)
-    ps = float(p.get('price_sell', 0) or 0)
-    if pb > 0: buy_prices.setdefault(cid,  []).append({'price': pb, 'terminal': terminal})
-    if ps > 0: sell_prices.setdefault(cid, []).append({'price': ps, 'terminal': terminal})
-
-items = []
-for c in commodities:
-    cid   = c.get('id')
-    buys  = sorted(buy_prices.get(cid,  []), key=lambda x: x['price'])
-    sells = sorted(sell_prices.get(cid, []), key=lambda x: -x['price'])
-    bb, bs = (buys[0] if buys else None), (sells[0] if sells else None)
-    items.append({
-        'id': cid, 'name': c.get('name') or '?', 'code': c.get('code', ''),
-        'kind': c.get('kind') or '—', 'is_illegal': bool(c.get('is_illegal', 0)),
-        'best_buy': bb, 'best_sell': bs,
-        'profit': round(bs['price'] - bb['price'], 2) if bb and bs else 0,
-    })
-items.sort(key=lambda x: x['name'].lower())
-
-output = {'_cached_at': datetime.now(timezone.utc).isoformat(),
-          '_source': 'UEX Corp API v2', '_count': len(items), 'items': items}
-with open('data-items.json', 'w') as f:
-    json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
-print(f"  ✓ {len(items)} Items → data-items.json")
-PYEOF
+      - name: Daten verarbeiten
+        run: python3 scripts/process-items.py
 
       - name: Committen und pushen
         run: |
