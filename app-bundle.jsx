@@ -3,6 +3,12 @@
 
 const { useState, useEffect, useMemo } = React;
 
+// ── Icon-Scope Fix ────────────────────────────────────────────────────────────
+// Babel transpiliert jeden <script type="text/babel"> in einen eigenen Scope.
+// "const Icon" aus icons.jsx ist hier NICHT direkt sichtbar — nur window.Icon.
+// Diese Zeile macht Icon in diesem ganzen File verfügbar.
+const Icon = window.Icon;
+
 // ──────────────────────────────────────── Reusable shell
 
 function Panel({ title, sub, right, children, className = '', dense = false, strong = false }) {

@@ -2,6 +2,11 @@
 
 const { useState: useStateT, useEffect: useEffectT, useMemo: useMemoT } = React;
 
+// ── Icon-Scope Fix ────────────────────────────────────────────────────────────
+// Gleiche Ursache wie in app-bundle.jsx: Babel-Scope trennt die Dateien.
+// window.Icon (gesetzt in icons.jsx) hier als lokale Konstante verfügbar machen.
+const Icon = window.Icon;
+
 function ToolCard({ tool, isFav, onFav }) {
   const I = window.Icon[tool.icon] || window.Icon.Tools;
   return (
