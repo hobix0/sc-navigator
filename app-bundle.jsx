@@ -54,7 +54,7 @@ function ServerStatus() {
         ))
         ) : (
           <div className="text-center py-6 text-white/40 text-[12px]">
-            <Icon.Server className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            <Icon.Status className="w-6 h-6 mx-auto mb-1 opacity-40" />
             Keine Server-Daten verfügbar
           </div>
         )}
@@ -189,7 +189,7 @@ function TradeRoutes() {
         ))
         ) : (
           <div className="text-center py-8 text-white/40 text-[12px]">
-            <Icon.Trade className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            <Icon.Map className="w-6 h-6 mx-auto mb-1 opacity-40" />
             Keine Trade-Routen verfügbar
           </div>
         )}
@@ -373,7 +373,7 @@ function EventsPanel() {
         ))
         ) : (
           <div className="text-center py-6 text-white/40 text-[12px]">
-            <Icon.Calendar className="w-6 h-6 mx-auto mb-1 opacity-40" />
+            <Icon.Bell className="w-6 h-6 mx-auto mb-1 opacity-40" />
             Keine aktiven Events
           </div>
         )}
