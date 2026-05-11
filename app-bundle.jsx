@@ -671,6 +671,160 @@ function ToolGrid() {
 // Sort:    Klick auf Spaltenheader
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ITEM DETAIL POPUP — Modal für Item-Details von der Wiki API
+// ──────────────────────────────────────────────────────────────────────────────
+
+function ItemDetailModal({ item, onClose }) {
+  const [wikiData, setWikiData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!item || !item.class_name) {
+      return;
+    }
+
+    // Nur lokale Daten nutzen - keine API-Anfragen wegen CORS-Problemen
+    // Die Wiki-Daten werden über den "Auf Wiki anschauen" Link angeboten
+    setWikiData(null);
+  }, [item]);
+
+  if (!item) return null;
+
+  // Icon basierend auf Item-Typ
+  const getItemIcon = (kind) => {
+    const iconMap = {
+      'FPS Waffe': '🔫',
+      'Rüstung': '🛡️',
+      'Kleidung': '👔',
+      'Waffenaufsatz': '⚙️',
+      'Medizin': '💊',
+      'Schiffswaffe': '🚀',
+      'Schild': '⚔️',
+      'Kühler': '❄️',
+      'Reaktor': '⚡',
+      'Quantum-Antrieb': '🌌',
+      'Flugregler': '🎛️',
+      'Rakete': '💣',
+      'Mining-Laser': '⛏️',
+      'Gerät': '📦',
+    };
+    return iconMap[kind] || '📦';
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         onClick={onClose}>
+      <div className="glass-strong rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header mit Icon */}
+        <div className="flex items-start justify-between gap-4 p-6 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.03] to-transparent">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-4xl">{getItemIcon(item.kind)}</span>
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold truncate">{item.name}</h2>
+                <p className="text-xs text-white/40 font-mono truncate">{item.class_name}</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-2 text-white/40 hover:text-white transition flex-none hover:bg-white/10 rounded-md">
+            <Icon.X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Basis-Infos Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {item.kind && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Typ</div>
+                <div className="chip" style={{
+                  background: (KIND_COLORS[item.kind] || '#6b7280') + '22',
+                  color: KIND_COLORS[item.kind] || '#9ca3af',
+                  border: `1px solid ${(KIND_COLORS[item.kind] || '#6b7280')}44`,
+                  display: 'inline-block'
+                }}>
+                  {item.kind}
+                </div>
+              </div>
+            )}
+            {item.manufacturer && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Hersteller</div>
+                <div className="font-medium text-white/85">{item.manufacturer}</div>
+              </div>
+            )}
+            {item.size && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Größe</div>
+                <div className="font-mono text-white/85 text-lg">Größe {item.size}</div>
+              </div>
+            )}
+            {item.grade && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Grade</div>
+                <div className="font-mono text-white/85 text-lg">{item.grade}</div>
+              </div>
+            )}
+            {item.type && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Subtyp</div>
+                <div className="font-medium text-white/70">{item.type}</div>
+              </div>
+            )}
+            {item.is_illegal !== undefined && (
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Status</div>
+                <div className={`font-medium text-lg ${item.is_illegal ? 'text-red-400' : 'text-green-400'}`}>
+                  {item.is_illegal ? '⛔ Illegal' : '✓ Legal'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Zusatz-Info Sektion */}
+          {item.best_buy !== null || item.best_sell !== null ? (
+            <div className="border-t border-white/[0.06] pt-4">
+              <div className="text-sm text-white/60 mb-3 cap tracking-wider">📊 Marktdaten</div>
+              <div className="grid grid-cols-2 gap-3">
+                {item.best_buy !== null && (
+                  <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
+                    <div className="text-xs text-green-400/70 mb-1">Bester Kauf</div>
+                    <div className="font-mono text-white">{item.best_buy.toLocaleString()}</div>
+                  </div>
+                )}
+                {item.best_sell !== null && (
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2">
+                    <div className="text-xs text-blue-400/70 mb-1">Bester Verkauf</div>
+                    <div className="font-mono text-white">{item.best_sell.toLocaleString()}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-white/[0.06] p-4 flex items-center justify-between bg-white/[0.02]">
+          <a href={item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`}
+             target="_blank" rel="noopener noreferrer"
+             className="text-sm text-white/50 hover:text-white transition inline-flex items-center gap-2 hover:bg-white/10 px-3 py-1.5 rounded">
+            Wiki öffnen <Icon.External className="w-4 h-4" />
+          </a>
+          <button onClick={onClose}
+            className="btn !py-1.5 !px-4 !text-sm">
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Spalten-Definition
 const COLUMNS = [
   { key: 'name',         label: 'Name',        sortable: true  },
@@ -694,6 +848,9 @@ function ItemDatabase() {
   // Sort-State
   const [sortCol, setSortCol] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
+
+  // Modal-State für Item-Details
+  const [selectedItem, setSelectedItem] = useState(null);
 
   // Daten laden
   useEffect(() => {
@@ -866,7 +1023,8 @@ function ItemDatabase() {
               <tbody>
                 {rows.map((item, i) => (
                   <tr key={item.id || i}
-                      className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      onClick={() => setSelectedItem(item)}
+                      className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors cursor-pointer">
 
                     {/* Name mit Kategorie-Farbpunkt */}
                     <td className="px-4 py-2.5">
@@ -930,6 +1088,9 @@ function ItemDatabase() {
           </div>
         </div>
       )}
+
+      {/* Item Detail Modal */}
+      {selectedItem && <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />}
     </div>
   );
 }

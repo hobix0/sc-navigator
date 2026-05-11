@@ -18,14 +18,7 @@ const BACKGROUNDS = {
 
 // ─────────────── Top bar
 
-function TopBar({ tab, setTab, query, setQuery }) {
-  const tabs = [
-    { id: 'overview', label: 'Übersicht' },
-    { id: 'tools',    label: 'Tools' },
-    { id: 'trade',    label: 'Trade' },
-    { id: 'mining',   label: 'Mining' },
-    { id: 'fleet',    label: 'Schiffe' },
-  ];
+function TopBar({ query, setQuery }) {
   const now = new Date();
   return (
     <header className="glass-strong rounded-lg px-4 py-2.5 flex items-center justify-between gap-4 sticky top-0 z-40">
@@ -40,15 +33,6 @@ function TopBar({ tab, setTab, query, setQuery }) {
           <div className="cap">Citizen Command Hub</div>
         </div>
       </div>
-
-      {/* Tabs (centered) */}
-      <nav className="hidden md:flex items-center gap-1 bg-white/[0.02] rounded-lg p-1 border border-white/[0.06]">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`tab ${tab === t.id ? 'tab-active' : ''}`}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
 
       {/* Right cluster */}
       <div className="flex items-center gap-2">
@@ -238,7 +222,6 @@ function MyTweaks({ t, setTweak }) {
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [tab, setTab] = useStateA('overview');
   const [section, setSection] = useStateA('status');
   const [activeShipId, setActiveShipId] = useStateA('connie');
   const [query, setQuery] = useStateA('');
@@ -268,7 +251,7 @@ function App() {
 
   return (
     <div className="min-h-screen p-4 md:p-5 max-w-[1600px] mx-auto">
-      <TopBar tab={tab} setTab={setTab} query={query} setQuery={setQuery} />
+      <TopBar query={query} setQuery={setQuery} />
 
       {/* Global search results overlay */}
       {query && matchingTools.length > 0 && (

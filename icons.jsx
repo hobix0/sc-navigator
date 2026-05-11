@@ -46,5 +46,6 @@ const Icon = {
   Ship:     (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 12c4-1 5-4 9-4s5 3 9 4M3 12v3l9 5 9-5v-3M7 11V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4"/></svg>,
   Crosshair:(p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="9"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/></svg>,
   Wrench:   (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2.8 2.8 6-6a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.8-2.8z"/></svg>,
+  X:        (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 6 6 18M6 6l12 12"/></svg>,
 };
 window.Icon = Icon;
