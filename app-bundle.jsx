@@ -677,16 +677,93 @@ function ToolGrid() {
 
 function ItemDetailModal({ item, onClose }) {
   const [wikiData, setWikiData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [wikiLoading, setWikiLoading] = useState(true);
 
   useEffect(() => {
-    if (!item || !item.class_name) {
-      return;
+    if (!item) return;
+
+    const pageUrl = item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`;
+    const controller = new AbortController();
+
+    async function loadWikiData() {
+      setWikiData(null);
+      setWikiLoading(true);
+
+      try {
+        const res = await fetch(pageUrl, { cache: 'no-store', signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const html = await res.text();
+        
+        // Bild aus HTML extrahieren
+        let imageUrl = null;
+        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+        if (ogMatch) imageUrl = ogMatch[1];
+        
+        if (!imageUrl) {
+          const imgMatch = html.match(/<img\s+[^>]*src="([^"]*cdn\.star-citizen\.wiki[^"]*)"/i);
+          if (imgMatch) imageUrl = imgMatch[1];
+        }
+        
+        // Kauflocations extrahieren
+        const buyLocations = [];
+        const buyPattern = /<a\s+href="[^"]*"[^>]*>([^<]*(?:Dumpers Depot|CBD-1|Lor|New Babbage|Port Tressler|GrimHex|Levski)[^<]*)<\/a>/gi;
+        let buyMatch;
+        while ((buyMatch = buyPattern.exec(html)) !== null) {
+          const location = buyMatch[1]?.trim();
+          if (location && !buyLocations.includes(location)) {
+            buyLocations.push(location);
+          }
+        }
+        
+        // Auch <td> und <tr> nach "where to buy" oder "location" Patterns durchsuchen
+        const tablePattern = /<td[^>]*>([^<]*(?:Dumpers Depot|CBD-1|Lor|New Babbage|Port Tressler|GrimHex|Levski)[^<]*)<\/td>/gi;
+        while ((buyMatch = tablePattern.exec(html)) !== null) {
+          const location = buyMatch[1]?.trim();
+          if (location && !buyLocations.includes(location) && location.length < 100) {
+            buyLocations.push(location);
+          }
+        }
+        
+        // Allgemeine Key-Value Extraktion
+        const dataMap = {};
+        const labelPatterns = [
+          /<dt[^>]*>([^<]+)<\/dt>\s*<dd[^>]*>([^<]+)<\/dd>/gi,
+          /<strong[^>]*>([^<]+)<\/strong>\s*(?:<[^>]+>)*\s*([^<]+)/gi,
+        ];
+        
+        for (const pattern of labelPatterns) {
+          let match;
+          while ((match = pattern.exec(html)) !== null) {
+            const label = match[1]?.trim();
+            const value = match[2]?.trim();
+            if (label && value && label.length < 50 && value.length < 200) {
+              dataMap[label] = value;
+            }
+          }
+        }
+
+        setWikiData({
+          imageUrl,
+          wikiUrl: pageUrl,
+          extractedData: dataMap,
+          buyLocations,
+        });
+      } catch (err) {
+        setWikiData({
+          imageUrl: null,
+          wikiUrl: pageUrl,
+          extractedData: {},
+          buyLocations: [],
+        });
+      } finally {
+        if (!controller.signal.aborted) {
+          setWikiLoading(false);
+        }
+      }
     }
 
-    // Nur lokale Daten nutzen - keine API-Anfragen wegen CORS-Problemen
-    // Die Wiki-Daten werden über den "Auf Wiki anschauen" Link angeboten
-    setWikiData(null);
+    loadWikiData();
+    return () => controller.abort();
   }, [item]);
 
   if (!item) return null;
@@ -712,20 +789,73 @@ function ItemDetailModal({ item, onClose }) {
     return iconMap[kind] || '📦';
   };
 
+  const FIELD_LABELS = {
+    id: 'ID',
+    name: 'Name',
+    class_name: 'Klassenname',
+    kind: 'Typ',
+    type: 'Subtyp',
+    manufacturer: 'Hersteller',
+    size: 'Größe',
+    grade: 'Grade',
+    is_illegal: 'Illegal',
+    best_buy: 'Bester Kauf',
+    best_sell: 'Bester Verkauf',
+    profit: 'Profit',
+    wiki_url: 'Wiki URL',
+  };
+
+  const FIELD_ORDER = [
+    'name', 'class_name', 'kind', 'type', 'manufacturer', 'size', 'grade',
+    'is_illegal', 'best_buy', 'best_sell', 'profit', 'wiki_url', 'id',
+  ];
+
+  const formatFieldValue = (key, value) => {
+    if (value === null || value === undefined || value === '') return '–';
+    if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
+    if (key === 'wiki_url') {
+      return (
+        <a href={value} target="_blank" rel="noopener noreferrer"
+           className="text-white/70 hover:text-white underline break-all">
+          {value}
+        </a>
+      );
+    }
+    if (typeof value === 'number') return value.toLocaleString();
+    if (typeof value === 'object') return JSON.stringify(value);
+    return value;
+  };
+
+  const itemKeys = Array.from(new Set([
+    ...FIELD_ORDER,
+    ...Object.keys(item).sort(),
+  ]));
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
          onClick={onClose}>
-      <div className="glass-strong rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto"
+      <div className="glass-strong rounded-lg max-w-4xl w-full max-h-[92vh] overflow-y-auto"
            onClick={e => e.stopPropagation()}>
 
-        {/* Header mit Icon */}
+        {/* Header mit Icon und Bild oben links */}
         <div className="flex items-start justify-between gap-4 p-6 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.03] to-transparent">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-4xl">{getItemIcon(item.kind)}</span>
-              <div className="min-w-0">
-                <h2 className="text-xl font-bold truncate">{item.name}</h2>
-                <p className="text-xs text-white/40 font-mono truncate">{item.class_name}</p>
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            <div className="flex-none w-32 h-32 rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04] flex items-center justify-center text-[12px] text-white/50 flex-shrink-0">
+              {wikiData?.imageUrl ? (
+                <img src={wikiData.imageUrl} alt={item.name} className="object-cover w-full h-full" onError={(e) => e.target.style.display = 'none'} />
+              ) : wikiLoading ? (
+                <div className="text-center px-2">Bild lädt…</div>
+              ) : (
+                <div className="text-center px-2">Kein Bild</div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-4xl">{getItemIcon(item.kind)}</span>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold truncate">{item.name}</h2>
+                  <p className="text-xs text-white/40 font-mono truncate">{item.class_name}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -737,84 +867,112 @@ function ItemDetailModal({ item, onClose }) {
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Basis-Infos Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            {item.kind && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Typ</div>
-                <div className="chip" style={{
-                  background: (KIND_COLORS[item.kind] || '#6b7280') + '22',
-                  color: KIND_COLORS[item.kind] || '#9ca3af',
-                  border: `1px solid ${(KIND_COLORS[item.kind] || '#6b7280')}44`,
-                  display: 'inline-block'
-                }}>
-                  {item.kind}
+          
+          {/* Basis-Informationen als Liste */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Grundinformationen</h3>
+            <div className="space-y-2">
+              {item.kind && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Typ</div>
+                  <div className="text-sm font-medium text-white/85">{item.kind}</div>
                 </div>
-              </div>
-            )}
-            {item.manufacturer && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Hersteller</div>
-                <div className="font-medium text-white/85">{item.manufacturer}</div>
-              </div>
-            )}
-            {item.size && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Größe</div>
-                <div className="font-mono text-white/85 text-lg">Größe {item.size}</div>
-              </div>
-            )}
-            {item.grade && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Grade</div>
-                <div className="font-mono text-white/85 text-lg">{item.grade}</div>
-              </div>
-            )}
-            {item.type && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Subtyp</div>
-                <div className="font-medium text-white/70">{item.type}</div>
-              </div>
-            )}
-            {item.is_illegal !== undefined && (
-              <div className="bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
-                <div className="text-xs text-white/50 mb-2 cap tracking-wider">Status</div>
-                <div className={`font-medium text-lg ${item.is_illegal ? 'text-red-400' : 'text-green-400'}`}>
-                  {item.is_illegal ? '⛔ Illegal' : '✓ Legal'}
+              )}
+              {item.manufacturer && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Hersteller</div>
+                  <div className="text-sm font-medium text-white/85">{item.manufacturer}</div>
                 </div>
-              </div>
-            )}
+              )}
+              {item.size && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Größe</div>
+                  <div className="text-sm font-mono text-white/85">{item.size}</div>
+                </div>
+              )}
+              {item.grade && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Grade</div>
+                  <div className="text-sm font-mono text-white/85">{item.grade}</div>
+                </div>
+              )}
+              {item.type && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Subtyp</div>
+                  <div className="text-sm text-white/85">{item.type}</div>
+                </div>
+              )}
+              {item.is_illegal !== undefined && (
+                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="text-sm text-white/40">Status</div>
+                  <div className={`text-sm font-medium ${item.is_illegal ? 'text-red-400' : 'text-green-400'}`}>
+                    {item.is_illegal ? '⛔ Illegal' : '✓ Legal'}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Zusatz-Info Sektion */}
-          {item.best_buy !== null || item.best_sell !== null ? (
-            <div className="border-t border-white/[0.06] pt-4">
-              <div className="text-sm text-white/60 mb-3 cap tracking-wider">📊 Marktdaten</div>
-              <div className="grid grid-cols-2 gap-3">
-                {item.best_buy !== null && (
-                  <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
-                    <div className="text-xs text-green-400/70 mb-1">Bester Kauf</div>
-                    <div className="font-mono text-white">{item.best_buy.toLocaleString()}</div>
+          {/* Technische Spezifikationen von der Wiki */}
+          {wikiData?.extractedData && Object.keys(wikiData.extractedData).length > 0 && (
+            <div className="space-y-3 border-t border-white/[0.06] pt-6">
+              <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Technische Spezifikationen</h3>
+              <div className="space-y-2">
+                {Object.entries(wikiData.extractedData).slice(0, 15).map(([label, value]) => (
+                  <div key={label} className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                    <div className="text-sm text-white/40 min-w-[160px]">{label}</div>
+                    <div className="text-sm text-white/85 text-right">{value}</div>
                   </div>
-                )}
-                {item.best_sell !== null && (
-                  <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2">
-                    <div className="text-xs text-blue-400/70 mb-1">Bester Verkauf</div>
-                    <div className="font-mono text-white">{item.best_sell.toLocaleString()}</div>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
-          ) : null}
+          )}
+
+          {/* Kauflocations */}
+          {wikiData?.buyLocations && wikiData.buyLocations.length > 0 && (
+            <div className="space-y-3 border-t border-white/[0.06] pt-6">
+              <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Kauflocations</h3>
+              <div className="space-y-2">
+                {wikiData.buyLocations.map((location, idx) => (
+                  <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                    <span className="text-white/40">📍</span>
+                    <span className="text-sm text-white/85">{location}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Alle Daten aus Cache */}
+          <div className="space-y-3 border-t border-white/[0.06] pt-6">
+            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Item-Cache Daten</h3>
+            <div className="space-y-2">
+              {itemKeys.map(key => {
+                const value = item[key];
+                if (value === undefined || value === null || value === '' || key === 'wiki_url') return null;
+                return (
+                  <div key={key} className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
+                    <div className="text-sm text-white/40">{FIELD_LABELS[key] || key}</div>
+                    <div className="text-sm text-white/85 text-right">{formatFieldValue(key, value)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Wiki-Link */}
+          <div className="border-t border-white/[0.06] pt-6">
+            <a href={item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`}
+               target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded-lg px-4 py-2.5 transition border border-white/[0.08]">
+              <Icon.External className="w-4 h-4" />
+              Vollständigen Artikel auf Wiki öffnen
+            </a>
+          </div>
         </div>
 
         {/* Footer */}
         <div className="border-t border-white/[0.06] p-4 flex items-center justify-between bg-white/[0.02]">
-          <a href={item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`}
-             target="_blank" rel="noopener noreferrer"
-             className="text-sm text-white/50 hover:text-white transition inline-flex items-center gap-2 hover:bg-white/10 px-3 py-1.5 rounded">
-            Wiki öffnen <Icon.External className="w-4 h-4" />
-          </a>
           <button onClick={onClose}
             className="btn !py-1.5 !px-4 !text-sm">
             Schließen
@@ -824,6 +982,7 @@ function ItemDetailModal({ item, onClose }) {
     </div>
   );
 }
+
 
 // Spalten-Definition
 const COLUMNS = [
@@ -1328,10 +1487,10 @@ function LinkRow({ link, accent }) {
 // NAVIGATION
 // ══════════════════════════════════════════════════════════════════════════════
 
-// TopBar — sticky Header mit Logo, Tab-Navigation und Suche
+// TopBar — sticky Header mit Logo und Suche
 function TopBar({ query, setQuery }) {
   return (
-    <header className="glass-strong px-4 py-2.5 flex items-center justify-between gap-4 sticky top-0 z-40">
+    <header className="glass-strong px-4 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-40">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
           <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 18-7-7 18-2-9z"/></svg>
@@ -1342,30 +1501,11 @@ function TopBar({ query, setQuery }) {
         </div>
       </div>
 
-      {/* Tab-Navigation */}
-      <nav className="hidden md:flex items-center gap-0.5 bg-white/[0.03] rounded-lg p-1 border border-white/[0.06]">
-        <button onClick={() => window.__setTab && window.__setTab('status')}
-          className={`tab ${(!window.__tab || window.__tab === 'status') ? 'tab-active' : ''}`}>
-          Übersicht
-        </button>
-        <button onClick={() => window.__setTab && window.__setTab('links')}
-          className={`tab ${window.__tab === 'links' ? 'tab-active' : ''}`}>
-          Quick Links
-        </button>
-        <button onClick={() => window.__setTab && window.__setTab('items')}
-          className={`tab ${window.__tab === 'items' ? 'tab-active' : ''}`}>
-          Item-DB
-        </button>
-        {['Trade', 'Schiffe'].map(t => (
-          <button key={t} className="tab opacity-40 cursor-default" title="In Entwicklung">{t}</button>
-        ))}
-      </nav>
-
-      <div className="flex items-center gap-2">
-        <div className="hidden lg:flex relative">
+      <div className="flex items-center gap-2 w-full lg:w-auto">
+        <div className="relative flex-1 lg:flex-none">
           <Icon.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
           <input value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Schnell suchen…" className="field w-[220px] pl-9 !py-2" />
+            placeholder="Schnell suchen…" className="field w-full lg:w-[260px] pl-9 !py-2" />
         </div>
         <button className="btn !p-2"><Icon.Bell className="w-4 h-4" /></button>
         <button className="btn !p-2"><Icon.Comms className="w-4 h-4" /></button>
@@ -1380,6 +1520,8 @@ function TopBar({ query, setQuery }) {
 function Sidebar({ section, setSection }) {
   const items = [
     { id: 'status',  label: 'Übersicht',  icon: 'Status',  active: true  },
+    { id: 'links',   label: 'Quick Links',icon: 'Book',    active: true  },
+    { id: 'items',   label: 'Item-DB',    icon: 'Cube',    active: true  },
     { id: 'tools',   label: 'Tools',      icon: 'Tools',   active: false },
     { id: 'trade',   label: 'Trade',      icon: 'Trade',   active: false },
     { id: 'mining',  label: 'Mining',     icon: 'Mining',  active: false },
@@ -1453,11 +1595,6 @@ function App() {
   const [t, setTweak]         = useTweaks(TWEAK_DEFAULTS);
   const [section, setSection] = useState('status');
   const [query, setQuery]     = useState('');
-  const [tab, setTab]         = useState('status'); // 'status' | 'links' | 'items'
-
-  // Tab global verfügbar für TopBar (verhindert Prop-Drilling)
-  window.__tab    = tab;
-  window.__setTab = setTab;
 
   useEffect(() => { document.documentElement.style.setProperty('--blur', t.blur + 'px'); }, [t.blur]);
   useEffect(() => { document.body.classList.toggle('light', !t.dark); }, [t.dark]);
@@ -1480,7 +1617,7 @@ function App() {
         <main className="flex-1 min-w-0 space-y-6">
 
           {/* ── Tab: Übersicht ─────────────────────────────────────────── */}
-          {tab === 'status' && (
+          {section === 'status' && (
             <div id="status">
               <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
                 <div>
@@ -1500,7 +1637,7 @@ function App() {
           )}
 
           {/* ── Tab: Quick Links ───────────────────────────────────────── */}
-          {tab === 'links' && (
+          {section === 'links' && (
             <div id="links">
               <div className="mb-6">
                 <div className="text-[12px] text-white/45 mb-2">Community Tools</div>
@@ -1514,7 +1651,7 @@ function App() {
           )}
 
           {/* ── Tab: Item-Datenbank ───────────────────────────────────── */}
-          {tab === 'items' && (
+          {section === 'items' && (
             <div id="items">
               <div className="mb-6">
                 <div className="text-[12px] text-white/45 mb-2">Star Citizen Wiki</div>
