@@ -706,11 +706,24 @@ const STAT_SKIP = new Set([
   'best_buy','best_sell','profit','wiki_url','id',
 ]);
 
+// Detect {en_EN, de_DE, ...} localized string objects from the SC Wiki API
+function isLocStr(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) &&
+    Object.values(v).every(x => typeof x === 'string' || x === null);
+}
+// Extract best available string from a potentially localized value
+function locStr(v) {
+  if (!v && v !== 0) return null;
+  if (typeof v === 'string') return v || null;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (isLocStr(v)) return v.de_DE || v.en_EN || Object.values(v).find(x => x) || null;
+  return null;
+}
+
 function StatRow({ label, value }) {
-  if (value === null || value === undefined || value === '') return null;
-  const display = typeof value === 'boolean' ? (value ? 'Ja' : 'Nein')
-    : typeof value === 'number' ? value.toLocaleString('de-DE')
-    : String(value);
+  const display = locStr(value)
+    ?? (typeof value === 'number' ? value.toLocaleString('de-DE') : null);
+  if (display === null || display === '') return null;
   return (
     <div className="flex justify-between items-baseline gap-4 py-2 border-b border-white/[0.05] last:border-0">
       <span className="text-[12.5px] text-white/45 shrink-0">{label}</span>
@@ -747,18 +760,20 @@ function ItemDetailModal({ item, onClose }) {
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const image   = d.media?.[0]?.thumbnail || d.media?.[0]?.source_url || null;
-  const mfr     = typeof d.manufacturer === 'object' ? d.manufacturer?.name : (d.manufacturer || item.manufacturer);
-  const desc    = d.description || null;
-  const shops   = Array.isArray(d.shops) ? d.shops : [];
+  const mfr  = locStr(typeof d.manufacturer === 'object' ? d.manufacturer?.name : d.manufacturer) || item.manufacturer;
+  const desc = locStr(d.description);
+  const shops = Array.isArray(d.shops) ? d.shops : [];
 
-  // All scalar stats from API (excluding header/meta fields)
+  // Scalar + localized-string fields (flat display)
   const statsFlat = Object.entries(d).filter(([k, v]) =>
-    !STAT_SKIP.has(k) && v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+    !STAT_SKIP.has(k) && v !== null && v !== undefined && v !== '' &&
+    (typeof v !== 'object' || isLocStr(v))
   );
 
-  // Nested objects worth showing (e.g. damage breakdown, components)
+  // True nested objects (not localized strings, not arrays)
   const statsNested = Object.entries(d).filter(([k, v]) =>
-    !STAT_SKIP.has(k) && v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+    !STAT_SKIP.has(k) && v !== null && typeof v === 'object' &&
+    !Array.isArray(v) && !isLocStr(v) && Object.keys(v).length > 0
   );
 
   // Arrays worth showing (e.g. ports, attachments)
@@ -840,7 +855,7 @@ function ItemDetailModal({ item, onClose }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                   {[
                     ['Typ',         item.kind],
-                    ['Subtyp',      item.type || d.sub_type],
+                    ['Subtyp',      item.type || locStr(d.sub_type)],
                     ['Hersteller',  mfr],
                     ['Größe',       item.size],
                     ['Grade',       item.grade],
@@ -879,7 +894,7 @@ function ItemDetailModal({ item, onClose }) {
                     {Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)
                       .map(([sk, sv]) => (
                         <StatRow key={sk} label={STAT_LABELS[sk] || sk}
-                          value={typeof sv === 'object' ? JSON.stringify(sv) : sv} />
+                          value={isLocStr(sv) ? locStr(sv) : typeof sv === 'object' ? JSON.stringify(sv) : sv} />
                       ))}
                   </div>
                 </div>
