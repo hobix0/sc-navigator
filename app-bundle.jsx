@@ -1519,82 +1519,14 @@ function TopBar({ query, setQuery }) {
 // NOTES
 // ══════════════════════════════════════════════════════════════════════════════
 
-const GH_REPO   = 'Hobix0/SC-Navigator';
-const GH_BRANCH = 'main';
-const GH_NOTES  = 'Notes';
+const NOTES_KEY = 'sc-nav.notes';
 
-function b64Enc(str) {
-  const bytes = new TextEncoder().encode(str);
-  let bin = '';
-  bytes.forEach(b => { bin += String.fromCharCode(b); });
-  return btoa(bin);
+function loadNotes() {
+  try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || []; } catch { return []; }
 }
-function b64Dec(b64) {
-  const bin = atob(b64.replace(/\s/g, ''));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
+function saveNotes(notes) {
+  localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
 }
-
-const GithubAPI = {
-  async call(path, method = 'GET', body, token) {
-    const res = await fetch(`https://api.github.com${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        ...(body && { 'Content-Type': 'application/json' }),
-      },
-      ...(body && { body: JSON.stringify(body) }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw Object.assign(new Error(data.message || `HTTP ${res.status}`), { status: res.status });
-    return data;
-  },
-  async listNotes(token) {
-    try {
-      const items = await GithubAPI.call(`/repos/${GH_REPO}/contents/${GH_NOTES}`, 'GET', null, token);
-      return (Array.isArray(items) ? items : []).filter(f => f.type === 'file' && f.name.endsWith('.md'));
-    } catch (e) {
-      if (e.status === 404) return [];
-      throw e;
-    }
-  },
-  async readNote(token, path) {
-    const data = await GithubAPI.call(`/repos/${GH_REPO}/contents/${path}`, 'GET', null, token);
-    return { content: b64Dec(data.content), sha: data.sha };
-  },
-  async writeNote(token, path, content, sha) {
-    return GithubAPI.call(`/repos/${GH_REPO}/contents/${path}`, 'PUT', {
-      message: `notes: update ${path.split('/').pop()} [skip ci]`,
-      content: b64Enc(content),
-      branch: GH_BRANCH,
-      ...(sha && { sha }),
-    }, token);
-  },
-  async deleteNote(token, path, sha) {
-    return GithubAPI.call(`/repos/${GH_REPO}/contents/${path}`, 'DELETE', {
-      message: `notes: delete ${path.split('/').pop()} [skip ci]`,
-      sha,
-      branch: GH_BRANCH,
-    }, token);
-  },
-  async uploadImage(token, filename, arrayBuffer) {
-    const bytes = new Uint8Array(arrayBuffer);
-    let bin = '';
-    bytes.forEach(b => { bin += String.fromCharCode(b); });
-    const path = `${GH_NOTES}/Images/${filename}`;
-    let existingSha;
-    try { existingSha = (await GithubAPI.call(`/repos/${GH_REPO}/contents/${path}`, 'GET', null, token)).sha; } catch {}
-    return GithubAPI.call(`/repos/${GH_REPO}/contents/${path}`, 'PUT', {
-      message: `notes: add image ${filename} [skip ci]`,
-      content: btoa(bin),
-      branch: GH_BRANCH,
-      ...(existingSha && { sha: existingSha }),
-    }, token);
-  },
-};
 
 function renderMarkdown(md) {
   if (!md) return '';
@@ -1631,189 +1563,58 @@ function renderMarkdown(md) {
 }
 
 function NotesPanel() {
-  const [token, setToken]         = useState(() => localStorage.getItem('sc-nav.gh-token') || '');
-  const [tokenInput, setTokenInput] = useState('');
-  const [notes, setNotes]         = useState([]);
-  const [active, setActive]       = useState(null);  // { name, path, sha }
-  const [content, setContent]     = useState('');
-  const [preview, setPreview]     = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [listLoading, setListLoading] = useState(false);
-  const [noteLoading, setNoteLoading] = useState(false);
-  const [dirty, setDirty]         = useState(false);
-  const [error, setError]         = useState(null);
+  const [notes, setNotes]     = useState(() => loadNotes());
+  const [activeId, setActiveId] = useState(() => { const n = loadNotes(); return n.length ? n[0].id : null; });
+  const [preview, setPreview] = useState(false);
 
-  useEffect(() => {
-    if (!token) return;
-    async function init() {
-      setListLoading(true);
-      setError(null);
-      try {
-        const items = await GithubAPI.listNotes(token);
-        setNotes(items);
-        if (items.length) await openNote(items[0]);
-      } catch (e) {
-        setError(e.status === 401 ? 'Ungültiger Token — bitte neu eingeben.' : `Fehler: ${e.message}`);
-      } finally { setListLoading(false); }
-    }
-    init();
-  }, [token]);
+  const active = notes.find(n => n.id === activeId) || null;
 
-  async function reloadList() {
-    setListLoading(true);
-    setError(null);
-    try {
-      const items = await GithubAPI.listNotes(token);
-      setNotes(items);
-    } catch (e) { setError(`Fehler: ${e.message}`); }
-    finally { setListLoading(false); }
+  function persist(updated) {
+    setNotes(updated);
+    saveNotes(updated);
   }
 
-  async function openNote(item) {
-    setNoteLoading(true);
-    setError(null);
-    try {
-      const { content: c, sha } = await GithubAPI.readNote(token, item.path);
-      setActive({ name: item.name, path: item.path, sha });
-      setContent(c);
-      setDirty(false);
-    } catch (e) { setError(`Laden fehlgeschlagen: ${e.message}`); }
-    finally { setNoteLoading(false); }
+  function setContent(text) {
+    persist(notes.map(n => n.id === activeId ? { ...n, content: text, updated: Date.now() } : n));
   }
 
-  async function saveNote() {
-    if (!active) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const result = await GithubAPI.writeNote(token, active.path, content, active.sha);
-      setActive(a => ({ ...a, sha: result.content.sha }));
-      setDirty(false);
-    } catch (e) {
-      if (e.status === 409 || e.status === 422) {
-        setError('Konflikt: Die Notiz wurde von jemand anderem geändert. Neu laden oder überschreiben?');
-      } else { setError(`Speichern fehlgeschlagen: ${e.message}`); }
-    } finally { setSaving(false); }
-  }
-
-  async function forceOverwrite() {
-    if (!active) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const { sha } = await GithubAPI.readNote(token, active.path);
-      const result  = await GithubAPI.writeNote(token, active.path, content, sha);
-      setActive(a => ({ ...a, sha: result.content.sha }));
-      setDirty(false);
-    } catch (e) { setError(`Fehler: ${e.message}`); }
-    finally { setSaving(false); }
-  }
-
-  async function reloadNote() {
-    if (!active) return;
-    await openNote(active);
-  }
-
-  async function createNote() {
+  function createNote() {
     const title = prompt('Titel der neuen Notiz:');
     if (!title) return;
-    const slug = title.trim().replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '').replace(/\s+/g, '-');
-    const name = slug + '.md';
-    const path = `${GH_NOTES}/${name}`;
-    const initial = `# ${title}\n\n`;
-    setSaving(true);
-    setError(null);
-    try {
-      const result = await GithubAPI.writeNote(token, path, initial, null);
-      await reloadList();
-      setActive({ name, path, sha: result.content.sha });
-      setContent(initial);
-      setDirty(false);
-    } catch (e) { setError(`Erstellen fehlgeschlagen: ${e.message}`); }
-    finally { setSaving(false); }
+    const note = { id: Date.now().toString(), title: title.trim(), content: `# ${title.trim()}\n\n`, created: Date.now(), updated: Date.now() };
+    const updated = [note, ...notes];
+    persist(updated);
+    setActiveId(note.id);
+    setPreview(false);
   }
 
-  async function deleteNote() {
+  function deleteNote() {
     if (!active) return;
-    if (!confirm(`Notiz "${active.name.replace(/\.md$/, '')}" wirklich löschen?`)) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await GithubAPI.deleteNote(token, active.path, active.sha);
-      setActive(null);
-      setContent('');
-      setDirty(false);
-      await reloadList();
-    } catch (e) { setError(`Löschen fehlgeschlagen: ${e.message}`); }
-    finally { setSaving(false); }
+    if (!confirm(`Notiz "${active.title}" löschen?`)) return;
+    const updated = notes.filter(n => n.id !== activeId);
+    persist(updated);
+    setActiveId(updated.length ? updated[0].id : null);
   }
 
-  async function insertImage() {
-    try {
-      const [fh] = await window.showOpenFilePicker({
-        types: [{ description: 'Bilder', accept: { 'image/*': ['.png','.jpg','.jpeg','.gif','.webp'] } }],
-      });
-      const file = await fh.getFile();
-      setSaving(true);
-      setError(null);
-      try {
-        await GithubAPI.uploadImage(token, file.name, await file.arrayBuffer());
-        const url = `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${GH_NOTES}/Images/${file.name}`;
-        setContent(c => c + `\n![${file.name}](${url})\n`);
-        setDirty(true);
-      } finally { setSaving(false); }
-    } catch (e) {
-      if (e.name !== 'AbortError') setError(`Bild-Upload fehlgeschlagen: ${e.message}`);
-    }
+  function renameNote() {
+    if (!active) return;
+    const title = prompt('Neuer Titel:', active.title);
+    if (!title || title === active.title) return;
+    persist(notes.map(n => n.id === activeId ? { ...n, title: title.trim() } : n));
   }
 
-  function saveToken() {
-    const t = tokenInput.trim();
-    if (!t) return;
-    localStorage.setItem('sc-nav.gh-token', t);
-    setToken(t);
-    setTokenInput('');
-  }
-
-  function clearToken() {
-    localStorage.removeItem('sc-nav.gh-token');
-    setToken('');
-    setNotes([]);
-    setActive(null);
-    setContent('');
-    setError(null);
-  }
-
-  const noteName = n => n.replace(/\.md$/, '').replace(/-/g, ' ');
-
-  if (!token) return (
-    <Panel title="Notizen" sub="GitHub-Integration — für alle sichtbar">
-      <div className="flex flex-col items-center gap-5 py-10 text-center">
-        <Icon.Note className="w-14 h-14 text-white/15" />
-        <div className="max-w-[440px]">
-          <p className="text-[14px] text-white/75 mb-2 font-medium">GitHub Token einrichten</p>
-          <p className="cap mb-1">
-            Notizen werden direkt als <code className="font-mono">.md</code>-Dateien im Repo gespeichert — für alle Nutzer der App zugänglich.
-          </p>
-          <p className="cap">
-            Erstelle ein{' '}
-            <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" className="text-accent-400 underline">Fine-grained Personal Access Token</a>
-            {' '}mit <code className="font-mono">Contents: Read &amp; Write</code> für das Repo <code className="font-mono">Hobix0/SC-Navigator</code>.
-          </p>
-        </div>
-        <div className="flex gap-2 w-full max-w-[420px]">
-          <input
-            className="field flex-1 font-mono text-[12px]"
-            type="password"
-            placeholder="github_pat_…"
-            value={tokenInput}
-            onChange={e => setTokenInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveToken()}
-          />
-          <button className="btn btn-accent" onClick={saveToken}>Verbinden</button>
-        </div>
+  if (notes.length === 0 && !active) return (
+    <div className="flex flex-col items-center gap-5 py-16 text-center">
+      <Icon.Note className="w-14 h-14 text-white/15" />
+      <div>
+        <p className="text-[14px] text-white/70 mb-1 font-medium">Noch keine Notizen</p>
+        <p className="cap">Erstelle deine erste Notiz im Markdown-Format.</p>
       </div>
-    </Panel>
+      <button className="btn btn-accent" onClick={createNote}>
+        <Icon.Plus className="w-4 h-4" />
+        Erste Notiz erstellen
+      </button>
+    </div>
   );
 
   return (
@@ -1822,96 +1623,49 @@ function NotesPanel() {
       <div className="glass w-[200px] flex-none flex flex-col">
         <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.06]">
           <span className="text-[12px] font-semibold text-white/80">Notizen</span>
-          <div className="flex gap-1">
-            <button className="btn !p-1" title="Neu laden" onClick={reloadList} disabled={listLoading}>
-              <Icon.Refresh className={`w-3 h-3 ${listLoading ? 'opacity-30' : ''}`} />
-            </button>
-            <button className="btn !p-1" title="Neue Notiz" onClick={createNote} disabled={saving}>
-              <Icon.Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button className="btn !p-1" title="Neue Notiz" onClick={createNote}>
+            <Icon.Plus className="w-3.5 h-3.5" />
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
-          {listLoading && <p className="cap text-center py-4">Lade…</p>}
-          {!listLoading && notes.length === 0 && (
-            <p className="cap text-center px-4 py-6">Noch keine Notizen.<br/>+ zum Erstellen.</p>
-          )}
-          {notes.map(item => (
-            <button key={item.name} onClick={() => openNote(item)}
-              className={`w-full text-left flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors hover:bg-white/[0.04] ${active?.name === item.name ? 'bg-white/[0.07] text-white' : 'text-white/60'}`}>
+          {notes.map(n => (
+            <button key={n.id} onClick={() => { setActiveId(n.id); setPreview(false); }}
+              className={`w-full text-left flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors hover:bg-white/[0.04] ${n.id === activeId ? 'bg-white/[0.07] text-white' : 'text-white/60'}`}>
               <Icon.Doc className="w-3.5 h-3.5 flex-none opacity-50" />
-              <span className="truncate">{noteName(item.name)}</span>
+              <span className="truncate">{n.title}</span>
             </button>
           ))}
-        </div>
-        <div className="border-t border-white/[0.06] p-2">
-          <button className="btn !p-1.5 w-full justify-center text-[11px] text-white/35 hover:text-white/60" onClick={clearToken}>
-            Token zurücksetzen
-          </button>
         </div>
       </div>
 
       {/* Editor / Preview */}
       <div className="glass flex-1 flex flex-col min-w-0">
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-[12px] flex-none">
-            <span className="flex-1">{error}</span>
-            {error.includes('Konflikt') && (
-              <>
-                <button className="btn !px-2 !py-1 text-[11px]" onClick={reloadNote}>Neu laden</button>
-                <button className="btn !px-2 !py-1 text-[11px]" onClick={forceOverwrite}>Überschreiben</button>
-              </>
-            )}
-            <button className="opacity-50 hover:opacity-100 text-[16px] leading-none" onClick={() => setError(null)}>✕</button>
-          </div>
-        )}
-
-        {noteLoading ? (
-          <div className="flex-1 flex items-center justify-center cap">Lade Notiz…</div>
-        ) : active ? (
+        {active && (
           <>
             <div className="flex items-center gap-1.5 px-4 py-2 border-b border-white/[0.06] flex-none">
-              <span className="text-[13px] font-semibold flex-1 truncate">
-                {noteName(active.name)}
-                {dirty && <span className="ml-1.5 text-[10px] text-white/35">●</span>}
-              </span>
-              <button className="btn !p-1.5" onClick={insertImage} disabled={saving} title="Bild hochladen & einfügen">
-                <Icon.Image className="w-3.5 h-3.5" />
+              <button className="text-[13px] font-semibold flex-1 truncate text-left hover:text-white/70 transition-colors" onClick={renameNote} title="Umbenennen">
+                {active.title}
               </button>
               <button className={`btn !p-1.5 ${preview ? 'btn-accent' : ''}`} onClick={() => setPreview(v => !v)} title={preview ? 'Editor' : 'Vorschau'}>
                 <Icon.Eye className="w-3.5 h-3.5" />
               </button>
-              <button className="btn !p-1.5 hover:text-red-400" onClick={deleteNote} disabled={saving} title="Löschen">
+              <button className="btn !p-1.5 hover:text-red-400" onClick={deleteNote} title="Löschen">
                 <Icon.Trash className="w-3.5 h-3.5" />
-              </button>
-              <button className={`btn !px-3 !py-1.5 text-[12px] ${dirty ? 'btn-accent' : ''}`}
-                onClick={saveNote} disabled={saving || !dirty}>
-                {saving ? '…' : 'Speichern'}
               </button>
             </div>
             {preview ? (
               <div className="flex-1 overflow-y-auto px-7 py-5 prose-notes"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(active.content) }} />
             ) : (
               <textarea
                 className="flex-1 w-full bg-transparent resize-none px-7 py-5 text-[13px] font-mono text-white/85 focus:outline-none leading-relaxed"
-                value={content}
+                value={active.content}
                 spellCheck={false}
                 placeholder="Markdown eingeben…"
-                onChange={e => { setContent(e.target.value); setDirty(true); }}
-                onKeyDown={e => {
-                  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNote(); }
-                }}
+                onChange={e => setContent(e.target.value)}
               />
             )}
           </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <Icon.Note className="w-10 h-10 text-white/15 mx-auto mb-3" />
-              <p className="cap">Notiz auswählen oder neue erstellen</p>
-            </div>
-          </div>
         )}
       </div>
     </div>
