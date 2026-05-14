@@ -244,6 +244,28 @@
   @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
   .marquee-track { display: inline-flex; gap: 3rem; white-space: nowrap; animation: marquee 80s linear infinite; }
 
+  .btn-accent {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .btn-accent:hover { background: #2563EB; border-color: #2563EB; }
+
+  /* Markdown preview */
+  .prose-notes { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .prose-notes h1 { font-size: 1.5em; font-weight: 700; margin: 0 0 .6em; }
+  .prose-notes h2 { font-size: 1.2em; font-weight: 600; margin: 1.2em 0 .5em; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+  .prose-notes h3 { font-size: 1.05em; font-weight: 600; margin: 1em 0 .4em; }
+  .prose-notes p  { margin: 0 0 .75em; }
+  .prose-notes ul { list-style: disc; padding-left: 1.5em; margin: .5em 0 .75em; }
+  .prose-notes ol { list-style: decimal; padding-left: 1.5em; margin: .5em 0 .75em; }
+  .prose-notes li { margin-bottom: .25em; }
+  .prose-notes a  { color: var(--accent); text-decoration: underline; }
+  .prose-notes code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: .85em; }
+  .prose-notes pre { background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; padding: 1em; overflow-x: auto; margin: .75em 0; }
+  .prose-notes pre code { background: none; padding: 0; font-size: .9em; }
+  .prose-notes img { max-width: 100%; border-radius: 6px; margin: .5em 0; display: block; }
+  .prose-notes hr  { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+  .prose-notes blockquote { border-left: 3px solid var(--accent); padding-left: 1em; color: var(--text-muted); margin: .75em 0; }
+
   @media print { #tweaks-root, #bg-stars { display: none; } }
 </style>
 </head>
