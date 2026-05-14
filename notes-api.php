@@ -8,10 +8,10 @@
 // ============================================================
 
 // ── Konfiguration ────────────────────────────────────────────
-define('DB_HOST', 'http://homeassistant.local:8123/a0d7b954_phpmyadmin');
-define('DB_NAME', 'SC_Navigator');   // phpMyAdmin: Datenbankname
-define('DB_USER', 'Hobix');        // phpMyAdmin: Benutzername
-define('DB_PASS', 'Zwerg199632#');
+define('DB_HOST', '');
+define('DB_NAME', '');   // phpMyAdmin: Datenbankname
+define('DB_USER', '');        // phpMyAdmin: Benutzername
+define('DB_PASS', '');
 
 // Erlaubte Herkunft (CORS). '*' = alle, oder konkrete URL:
 // define('CORS_ORIGIN', 'https://hobix0.github.io');
