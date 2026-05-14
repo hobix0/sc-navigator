@@ -14,7 +14,7 @@
 //   QuickActions   → 5 Quick-Action Buttons
 //   ToolCard/Grid  → Filterbare Tool-Übersicht mit localStorage-Favoriten
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // ── Icon-Scope Fix ─────────────────────────────────────────────────────────
 // Babel-Scripts laufen in isolierten Scopes. window.Icon (aus icons.jsx) hier
@@ -675,308 +675,284 @@ function ToolGrid() {
 // ITEM DETAIL POPUP — Modal für Item-Details von der Wiki API
 // ──────────────────────────────────────────────────────────────────────────────
 
+const ITEM_KIND_ICON = {
+  'FPS Waffe': '🔫', 'Rüstung': '🛡️', 'Kleidung': '👔',
+  'Waffenaufsatz': '⚙️', 'Medizin': '💊', 'Schiffswaffe': '🚀',
+  'Schild': '🛡️', 'Kühler': '❄️', 'Reaktor': '⚡',
+  'Quantum-Antrieb': '🌌', 'Flugregler': '🎛️', 'Rakete': '💣', 'Mining-Laser': '⛏️',
+};
+
+const STAT_LABELS = {
+  mass: 'Masse (kg)', size: 'Größe', grade: 'Grade', damage: 'Schaden',
+  rof: 'Feuerrate', range: 'Reichweite', effective_range: 'Eff. Reichweite',
+  zeroing_range: 'Nullung', ammo_count: 'Magazin', ammo_cost: 'Munitionskosten',
+  rpm: 'Schuss/Min', velocity: 'Geschoss m/s', power_use: 'Stromverbrauch (EU)',
+  heat_generated: 'Wärme', cooldown_time: 'Abkühlung (s)', hp: 'Trefferpunkte',
+  regen_rate: 'Regen-Rate', regen_delay: 'Regen-Verzögerung (s)',
+  quantum_speed: 'Quantum-Geschw.', spool_time: 'Spul-Zeit (s)',
+  damage_reduction: 'Schadensreduktion', temp_resist_min: 'Temp-Resist. Min',
+  temp_resist_max: 'Temp-Resist. Max', encumbrance: 'Belastung',
+  capacity: 'Kapazität', radius: 'Radius', ir_emission: 'IR-Emission',
+  em_emission: 'EM-Emission', cross_section_reduction: 'Querschn.-Reduktion',
+  heat_capacity: 'Wärmekapazität', heat_dissipation: 'Wärmeableitung',
+  mining_laser_power: 'Laser-Stärke', mining_throttle_rate: 'Throttle-Rate',
+  instability_reduction: 'Instab.-Reduktion',
+};
+
+// Skip fields shown in header or not user-facing
+const STAT_SKIP = new Set([
+  'uuid','name','class_name','description','manufacturer','shops','media',
+  'type','sub_type','size','grade','links','version','kind','is_illegal',
+  'best_buy','best_sell','profit','wiki_url','id',
+]);
+
+function StatRow({ label, value }) {
+  if (value === null || value === undefined || value === '') return null;
+  const display = typeof value === 'boolean' ? (value ? 'Ja' : 'Nein')
+    : typeof value === 'number' ? value.toLocaleString('de-DE')
+    : String(value);
+  return (
+    <div className="flex justify-between items-baseline gap-4 py-2 border-b border-white/[0.05] last:border-0">
+      <span className="text-[12.5px] text-white/45 shrink-0">{label}</span>
+      <span className="text-[12.5px] font-mono text-white/80 text-right">{display}</span>
+    </div>
+  );
+}
+
 function ItemDetailModal({ item, onClose }) {
-  const [wikiData, setWikiData] = useState(null);
-  const [wikiLoading, setWikiLoading] = useState(true);
+  const [apiData, setApiData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab]         = useState('info');
 
   useEffect(() => {
     if (!item) return;
-
-    const pageUrl = item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`;
-    const controller = new AbortController();
-
-    async function loadWikiData() {
-      setWikiData(null);
-      setWikiLoading(true);
-
-      try {
-        const res = await fetch(pageUrl, { cache: 'no-store', signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const html = await res.text();
-        
-        // Bild aus HTML extrahieren
-        let imageUrl = null;
-        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-        if (ogMatch) imageUrl = ogMatch[1];
-        
-        if (!imageUrl) {
-          const imgMatch = html.match(/<img\s+[^>]*src="([^"]*cdn\.star-citizen\.wiki[^"]*)"/i);
-          if (imgMatch) imageUrl = imgMatch[1];
-        }
-        
-        // Kauflocations extrahieren
-        const buyLocations = [];
-        const buyPattern = /<a\s+href="[^"]*"[^>]*>([^<]*(?:Dumpers Depot|CBD-1|Lor|New Babbage|Port Tressler|GrimHex|Levski)[^<]*)<\/a>/gi;
-        let buyMatch;
-        while ((buyMatch = buyPattern.exec(html)) !== null) {
-          const location = buyMatch[1]?.trim();
-          if (location && !buyLocations.includes(location)) {
-            buyLocations.push(location);
-          }
-        }
-        
-        // Auch <td> und <tr> nach "where to buy" oder "location" Patterns durchsuchen
-        const tablePattern = /<td[^>]*>([^<]*(?:Dumpers Depot|CBD-1|Lor|New Babbage|Port Tressler|GrimHex|Levski)[^<]*)<\/td>/gi;
-        while ((buyMatch = tablePattern.exec(html)) !== null) {
-          const location = buyMatch[1]?.trim();
-          if (location && !buyLocations.includes(location) && location.length < 100) {
-            buyLocations.push(location);
-          }
-        }
-        
-        // Allgemeine Key-Value Extraktion
-        const dataMap = {};
-        const labelPatterns = [
-          /<dt[^>]*>([^<]+)<\/dt>\s*<dd[^>]*>([^<]+)<\/dd>/gi,
-          /<strong[^>]*>([^<]+)<\/strong>\s*(?:<[^>]+>)*\s*([^<]+)/gi,
-        ];
-        
-        for (const pattern of labelPatterns) {
-          let match;
-          while ((match = pattern.exec(html)) !== null) {
-            const label = match[1]?.trim();
-            const value = match[2]?.trim();
-            if (label && value && label.length < 50 && value.length < 200) {
-              dataMap[label] = value;
-            }
-          }
-        }
-
-        setWikiData({
-          imageUrl,
-          wikiUrl: pageUrl,
-          extractedData: dataMap,
-          buyLocations,
-        });
-      } catch (err) {
-        setWikiData({
-          imageUrl: null,
-          wikiUrl: pageUrl,
-          extractedData: {},
-          buyLocations: [],
-        });
-      } finally {
-        if (!controller.signal.aborted) {
-          setWikiLoading(false);
-        }
-      }
-    }
-
-    loadWikiData();
-    return () => controller.abort();
-  }, [item]);
+    const ctrl = new AbortController();
+    setApiData(null);
+    setLoading(true);
+    setTab('info');
+    fetch(
+      `https://api.star-citizen.wiki/api/v2/items/${encodeURIComponent(item.class_name)}?include=shops,components,ports`,
+      { headers: { Accept: 'application/json' }, signal: ctrl.signal }
+    )
+      .then(r => r.json())
+      .then(j => { if (!ctrl.signal.aborted) setApiData(j.data || null); })
+      .catch(() => {})
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
+    return () => ctrl.abort();
+  }, [item?.class_name]);
 
   if (!item) return null;
 
-  // Icon basierend auf Item-Typ
-  const getItemIcon = (kind) => {
-    const iconMap = {
-      'FPS Waffe': '🔫',
-      'Rüstung': '🛡️',
-      'Kleidung': '👔',
-      'Waffenaufsatz': '⚙️',
-      'Medizin': '💊',
-      'Schiffswaffe': '🚀',
-      'Schild': '⚔️',
-      'Kühler': '❄️',
-      'Reaktor': '⚡',
-      'Quantum-Antrieb': '🌌',
-      'Flugregler': '🎛️',
-      'Rakete': '💣',
-      'Mining-Laser': '⛏️',
-      'Gerät': '📦',
-    };
-    return iconMap[kind] || '📦';
-  };
+  const d = apiData || {};
 
-  const FIELD_LABELS = {
-    id: 'ID',
-    name: 'Name',
-    class_name: 'Klassenname',
-    kind: 'Typ',
-    type: 'Subtyp',
-    manufacturer: 'Hersteller',
-    size: 'Größe',
-    grade: 'Grade',
-    is_illegal: 'Illegal',
-    best_buy: 'Bester Kauf',
-    best_sell: 'Bester Verkauf',
-    profit: 'Profit',
-    wiki_url: 'Wiki URL',
-  };
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const image   = d.media?.[0]?.thumbnail || d.media?.[0]?.source_url || null;
+  const mfr     = typeof d.manufacturer === 'object' ? d.manufacturer?.name : (d.manufacturer || item.manufacturer);
+  const desc    = d.description || null;
+  const shops   = Array.isArray(d.shops) ? d.shops : [];
 
-  const FIELD_ORDER = [
-    'name', 'class_name', 'kind', 'type', 'manufacturer', 'size', 'grade',
-    'is_illegal', 'best_buy', 'best_sell', 'profit', 'wiki_url', 'id',
+  // All scalar stats from API (excluding header/meta fields)
+  const statsFlat = Object.entries(d).filter(([k, v]) =>
+    !STAT_SKIP.has(k) && v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+  );
+
+  // Nested objects worth showing (e.g. damage breakdown, components)
+  const statsNested = Object.entries(d).filter(([k, v]) =>
+    !STAT_SKIP.has(k) && v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+  );
+
+  // Arrays worth showing (e.g. ports, attachments)
+  const statsArrays = Object.entries(d).filter(([k, v]) =>
+    !STAT_SKIP.has(k) && !['shops','media','components'].includes(k) &&
+    Array.isArray(v) && v.length > 0
+  );
+
+  const hasStats = statsFlat.length || statsNested.length || statsArrays.length;
+
+  const tabs = [
+    { id: 'info',  label: 'Info' },
+    ...(hasStats   ? [{ id: 'stats', label: 'Stats' }] : []),
+    ...(shops.length ? [{ id: 'shops', label: `Kaufen (${shops.length})` }] : []),
   ];
 
-  const formatFieldValue = (key, value) => {
-    if (value === null || value === undefined || value === '') return '–';
-    if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
-    if (key === 'wiki_url') {
-      return (
-        <a href={value} target="_blank" rel="noopener noreferrer"
-           className="text-white/70 hover:text-white underline break-all">
-          {value}
-        </a>
-      );
-    }
-    if (typeof value === 'number') return value.toLocaleString();
-    if (typeof value === 'object') return JSON.stringify(value);
-    return value;
-  };
-
-  const itemKeys = Array.from(new Set([
-    ...FIELD_ORDER,
-    ...Object.keys(item).sort(),
-  ]));
-
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4"
          onClick={onClose}>
-      <div className="glass-strong rounded-lg max-w-4xl w-full max-h-[92vh] overflow-y-auto"
+      <div className="glass-strong w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl"
            onClick={e => e.stopPropagation()}>
 
-        {/* Header mit Icon und Bild oben links */}
-        <div className="flex items-start justify-between gap-4 p-6 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.03] to-transparent">
-          <div className="flex items-start gap-4 min-w-0 flex-1">
-            <div className="flex-none w-32 h-32 rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04] flex items-center justify-center text-[12px] text-white/50 flex-shrink-0">
-              {wikiData?.imageUrl ? (
-                <img src={wikiData.imageUrl} alt={item.name} className="object-cover w-full h-full" onError={(e) => e.target.style.display = 'none'} />
-              ) : wikiLoading ? (
-                <div className="text-center px-2">Bild lädt…</div>
-              ) : (
-                <div className="text-center px-2">Kein Bild</div>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-4xl">{getItemIcon(item.kind)}</span>
-                <div className="min-w-0">
-                  <h2 className="text-xl font-bold truncate">{item.name}</h2>
-                  <p className="text-xs text-white/40 font-mono truncate">{item.class_name}</p>
-                </div>
-              </div>
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex items-start gap-4 p-5 border-b border-white/[0.06] flex-none">
+          <div className="w-[88px] h-[88px] rounded-lg overflow-hidden border border-white/[0.08] bg-white/[0.04] flex items-center justify-center flex-none">
+            {loading
+              ? <span className="cap">…</span>
+              : image
+                ? <img src={image} alt={item.name} className="w-full h-full object-cover"
+                       onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
+                : null}
+            {!loading && !image && (
+              <span className="text-3xl">{ITEM_KIND_ICON[item.kind] || '📦'}</span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[18px] font-bold leading-tight">{item.name}</h2>
+            <p className="text-[11px] font-mono text-white/30 mt-0.5 truncate">{item.class_name}</p>
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              <span className="chip">{item.kind}</span>
+              {item.size  && <span className="chip">S{item.size}</span>}
+              {item.grade && <span className="chip">Grade {item.grade}</span>}
+              {mfr        && <span className="chip">{mfr}</span>}
+              <span className={`chip ${item.is_illegal ? 'chip-crit' : 'chip-ok'}`}>
+                {item.is_illegal ? 'Illegal' : 'Legal'}
+              </span>
             </div>
           </div>
-          <button onClick={onClose}
-            className="p-2 text-white/40 hover:text-white transition flex-none hover:bg-white/10 rounded-md">
-            <Icon.X className="w-5 h-5" />
+          <button onClick={onClose} className="btn !p-1.5 flex-none">
+            <Icon.X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          
-          {/* Basis-Informationen als Liste */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Grundinformationen</h3>
-            <div className="space-y-2">
-              {item.kind && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Typ</div>
-                  <div className="text-sm font-medium text-white/85">{item.kind}</div>
-                </div>
-              )}
-              {item.manufacturer && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Hersteller</div>
-                  <div className="text-sm font-medium text-white/85">{item.manufacturer}</div>
-                </div>
-              )}
-              {item.size && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Größe</div>
-                  <div className="text-sm font-mono text-white/85">{item.size}</div>
-                </div>
-              )}
-              {item.grade && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Grade</div>
-                  <div className="text-sm font-mono text-white/85">{item.grade}</div>
-                </div>
-              )}
-              {item.type && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Subtyp</div>
-                  <div className="text-sm text-white/85">{item.type}</div>
-                </div>
-              )}
-              {item.is_illegal !== undefined && (
-                <div className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                  <div className="text-sm text-white/40">Status</div>
-                  <div className={`text-sm font-medium ${item.is_illegal ? 'text-red-400' : 'text-green-400'}`}>
-                    {item.is_illegal ? '⛔ Illegal' : '✓ Legal'}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Technische Spezifikationen von der Wiki */}
-          {wikiData?.extractedData && Object.keys(wikiData.extractedData).length > 0 && (
-            <div className="space-y-3 border-t border-white/[0.06] pt-6">
-              <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Technische Spezifikationen</h3>
-              <div className="space-y-2">
-                {Object.entries(wikiData.extractedData).slice(0, 15).map(([label, value]) => (
-                  <div key={label} className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                    <div className="text-sm text-white/40 min-w-[160px]">{label}</div>
-                    <div className="text-sm text-white/85 text-right">{value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Kauflocations */}
-          {wikiData?.buyLocations && wikiData.buyLocations.length > 0 && (
-            <div className="space-y-3 border-t border-white/[0.06] pt-6">
-              <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Kauflocations</h3>
-              <div className="space-y-2">
-                {wikiData.buyLocations.map((location, idx) => (
-                  <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                    <span className="text-white/40">📍</span>
-                    <span className="text-sm text-white/85">{location}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Alle Daten aus Cache */}
-          <div className="space-y-3 border-t border-white/[0.06] pt-6">
-            <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Item-Cache Daten</h3>
-            <div className="space-y-2">
-              {itemKeys.map(key => {
-                const value = item[key];
-                if (value === undefined || value === null || value === '' || key === 'wiki_url') return null;
-                return (
-                  <div key={key} className="flex justify-between items-start gap-4 py-2 border-b border-white/[0.05] last:border-0">
-                    <div className="text-sm text-white/40">{FIELD_LABELS[key] || key}</div>
-                    <div className="text-sm text-white/85 text-right">{formatFieldValue(key, value)}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Wiki-Link */}
-          <div className="border-t border-white/[0.06] pt-6">
-            <a href={item.wiki_url || `https://api.star-citizen.wiki/items/${encodeURIComponent(item.class_name || '')}`}
-               target="_blank" rel="noopener noreferrer"
-               className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded-lg px-4 py-2.5 transition border border-white/[0.08]">
-              <Icon.External className="w-4 h-4" />
-              Vollständigen Artikel auf Wiki öffnen
-            </a>
-          </div>
+        {/* ── Tabs ────────────────────────────────────────────────────────── */}
+        <div className="flex gap-1 px-4 pt-2 border-b border-white/[0.06] flex-none">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`tab pb-2 !rounded-b-none !border-b-0 !border-x-0 !border-t-0 ${tab === t.id ? 'tab-active' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+          {loading && <span className="ml-auto self-center cap pr-1">Lade Wiki…</span>}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-white/[0.06] p-4 flex items-center justify-between bg-white/[0.02]">
-          <button onClick={onClose}
-            className="btn !py-1.5 !px-4 !text-sm">
-            Schließen
-          </button>
+        {/* ── Content ─────────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {/* INFO TAB */}
+          {tab === 'info' && (
+            <>
+              {desc && (
+                <div>
+                  <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-2">Beschreibung</p>
+                  <p className="text-[13px] text-white/65 leading-relaxed">{desc}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-1">Grunddaten</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                  {[
+                    ['Typ',         item.kind],
+                    ['Subtyp',      item.type || d.sub_type],
+                    ['Hersteller',  mfr],
+                    ['Größe',       item.size],
+                    ['Grade',       item.grade],
+                    ['Klasse',      item.class_name],
+                    ['Status',      item.is_illegal ? 'Illegal ⛔' : 'Legal ✓'],
+                  ].filter(([, v]) => v).map(([l, v]) => <StatRow key={l} label={l} value={v} />)}
+                </div>
+              </div>
+              {!apiData && !loading && (
+                <p className="cap text-center py-4 text-white/30">
+                  Keine weiteren Wiki-Daten verfügbar für dieses Item.
+                </p>
+              )}
+            </>
+          )}
+
+          {/* STATS TAB */}
+          {tab === 'stats' && (
+            <>
+              {statsFlat.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-1">Werte</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                    {statsFlat.map(([k, v]) => (
+                      <StatRow key={k} label={STAT_LABELS[k] || k} value={v} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {statsNested.map(([k, obj]) => (
+                <div key={k}>
+                  <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-1">
+                    {STAT_LABELS[k] || k}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                    {Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)
+                      .map(([sk, sv]) => (
+                        <StatRow key={sk} label={STAT_LABELS[sk] || sk}
+                          value={typeof sv === 'object' ? JSON.stringify(sv) : sv} />
+                      ))}
+                  </div>
+                </div>
+              ))}
+              {statsArrays.map(([k, arr]) => (
+                <div key={k}>
+                  <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-2">
+                    {STAT_LABELS[k] || k} ({arr.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {arr.map((entry, i) => (
+                      <div key={i} className="glass px-3 py-2 text-[12px] text-white/70">
+                        {typeof entry === 'object'
+                          ? Object.entries(entry).filter(([, v]) => v !== null && v !== undefined)
+                              .map(([ek, ev]) => `${ek}: ${ev}`).join(' · ')
+                          : String(entry)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* SHOPS TAB */}
+          {tab === 'shops' && (
+            <div className="space-y-2">
+              {shops.map((shop, i) => (
+                <div key={i} className="glass p-3 flex items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium truncate">
+                      {shop.name || shop.name_raw || 'Unbekannte Station'}
+                    </p>
+                    {shop.position && (
+                      <p className="text-[11px] text-white/40 mt-0.5">{shop.position}</p>
+                    )}
+                    {shop.type && (
+                      <p className="text-[11px] text-white/30 mt-0.5">{shop.type}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-4 flex-none">
+                    {shop.price_buy != null && (
+                      <div className="text-right">
+                        <p className="text-[10px] text-white/35 uppercase">Kaufen</p>
+                        <p className="text-[13px] font-mono text-green-400">
+                          {shop.price_buy.toLocaleString('de-DE')} aUEC
+                        </p>
+                      </div>
+                    )}
+                    {shop.price_sell != null && (
+                      <div className="text-right">
+                        <p className="text-[10px] text-white/35 uppercase">Verkaufen</p>
+                        <p className="text-[13px] font-mono text-blue-400">
+                          {shop.price_sell.toLocaleString('de-DE')} aUEC
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ──────────────────────────────────────────────────────── */}
+        <div className="border-t border-white/[0.06] px-5 py-3 flex items-center justify-between flex-none">
+          <a href={`https://star-citizen.wiki/w/${encodeURIComponent(item.name)}`}
+             target="_blank" rel="noopener"
+             className="btn text-[12px] gap-1.5">
+            <Icon.External className="w-3.5 h-3.5" />
+            Wiki öffnen
+          </a>
+          <button onClick={onClose} className="btn text-[12px]">Schließen</button>
         </div>
       </div>
     </div>
@@ -1563,11 +1539,72 @@ function renderMarkdown(md) {
 }
 
 function NotesPanel() {
-  const [notes, setNotes]     = useState(() => loadNotes());
+  const [notes, setNotes]       = useState(() => loadNotes());
   const [activeId, setActiveId] = useState(() => { const n = loadNotes(); return n.length ? n[0].id : null; });
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview]   = useState(false);
+  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('sc-nav.notes-server') || '');
+  const [serverInput, setServerInput] = useState('');
+  const [showConfig, setShowConfig]   = useState(false);
+  const [syncing, setSyncing]   = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null); // 'ok' | 'err' | null
+  const syncTimer = useRef(null);
 
   const active = notes.find(n => n.id === activeId) || null;
+
+  // On mount: pull notes from server if URL is configured
+  useEffect(() => {
+    if (!serverUrl) return;
+    pullServer(serverUrl, true);
+  }, []);
+
+  // Debounced auto-push to server on every notes change
+  useEffect(() => {
+    if (!serverUrl || !notes.length) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => pushServer(serverUrl), 3000);
+    return () => clearTimeout(syncTimer.current);
+  }, [notes, serverUrl]);
+
+  async function pullServer(url, silent = false) {
+    if (!silent) setSyncing(true);
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      const serverNotes = Array.isArray(j.notes) ? j.notes : [];
+      const local = loadNotes();
+      const merged = [...serverNotes];
+      local.forEach(loc => { if (!merged.find(s => s.id === loc.id)) merged.push(loc); });
+      merged.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+      setNotes(merged);
+      saveNotes(merged);
+      if (merged.length && !activeId) setActiveId(merged[0].id);
+      if (!silent) setSyncStatus('ok');
+    } catch { if (!silent) setSyncStatus('err'); }
+    finally { if (!silent) setSyncing(false); }
+  }
+
+  async function pushServer(url) {
+    const current = loadNotes();
+    if (!current.length) return;
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: current }),
+      });
+      if (!r.ok) throw new Error();
+      setSyncStatus('ok');
+    } catch { setSyncStatus('err'); }
+  }
+
+  function saveServer(url) {
+    const u = url.trim();
+    localStorage.setItem('sc-nav.notes-server', u);
+    setServerUrl(u);
+    setShowConfig(false);
+    if (u) pullServer(u, false);
+  }
 
   function persist(updated) {
     setNotes(updated);
@@ -1603,6 +1640,38 @@ function NotesPanel() {
     persist(notes.map(n => n.id === activeId ? { ...n, title: title.trim() } : n));
   }
 
+  function exportNotes() {
+    const json = JSON.stringify(notes, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `sc-notizen-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importNotes(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!Array.isArray(imported)) throw new Error();
+        const merged = [...imported];
+        notes.forEach(existing => {
+          if (!merged.find(m => m.id === existing.id)) merged.push(existing);
+        });
+        merged.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+        persist(merged);
+        if (merged.length) setActiveId(merged[0].id);
+      } catch { alert('Ungültige Backup-Datei.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
   if (notes.length === 0 && !active) return (
     <div className="flex flex-col items-center gap-5 py-16 text-center">
       <Icon.Note className="w-14 h-14 text-white/15" />
@@ -1610,10 +1679,17 @@ function NotesPanel() {
         <p className="text-[14px] text-white/70 mb-1 font-medium">Noch keine Notizen</p>
         <p className="cap">Erstelle deine erste Notiz im Markdown-Format.</p>
       </div>
-      <button className="btn btn-accent" onClick={createNote}>
-        <Icon.Plus className="w-4 h-4" />
-        Erste Notiz erstellen
-      </button>
+      <div className="flex gap-2">
+        <button className="btn btn-accent" onClick={createNote}>
+          <Icon.Plus className="w-4 h-4" />
+          Neue Notiz
+        </button>
+        <label className="btn cursor-pointer" title="Backup importieren">
+          <Icon.Refresh className="w-4 h-4" />
+          Backup laden
+          <input type="file" accept=".json" className="hidden" onChange={importNotes} />
+        </label>
+      </div>
     </div>
   );
 
@@ -1623,9 +1699,11 @@ function NotesPanel() {
       <div className="glass w-[200px] flex-none flex flex-col">
         <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.06]">
           <span className="text-[12px] font-semibold text-white/80">Notizen</span>
-          <button className="btn !p-1" title="Neue Notiz" onClick={createNote}>
-            <Icon.Plus className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex gap-1">
+            <button className="btn !p-1" title="Neue Notiz" onClick={createNote}>
+              <Icon.Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
           {notes.map(n => (
@@ -1635,6 +1713,46 @@ function NotesPanel() {
               <span className="truncate">{n.title}</span>
             </button>
           ))}
+        </div>
+        <div className="border-t border-white/[0.06] p-2 flex gap-1.5">
+          <button className="btn !p-1.5 flex-1 justify-center text-[11px] text-white/50 hover:text-white/80 gap-1.5" onClick={exportNotes} title="Alle Notizen als JSON-Datei sichern">
+            <Icon.External className="w-3 h-3" />
+            Export
+          </button>
+          <label className="btn !p-1.5 flex-1 justify-center text-[11px] text-white/50 hover:text-white/80 gap-1.5 cursor-pointer" title="Backup-Datei importieren">
+            <Icon.Refresh className="w-3 h-3" />
+            Import
+            <input type="file" accept=".json" className="hidden" onChange={importNotes} />
+          </label>
+        </div>
+
+        {/* Server-Config */}
+        <div className="border-t border-white/[0.06] p-2">
+          {showConfig ? (
+            <div className="flex flex-col gap-1.5">
+              <input
+                className="field !py-1 !text-[11px] font-mono"
+                placeholder="https://dein-server.de/notes-api.php"
+                value={serverInput}
+                onChange={e => setServerInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveServer(serverInput)}
+              />
+              <div className="flex gap-1">
+                <button className="btn btn-accent !py-1 !text-[11px] flex-1" onClick={() => saveServer(serverInput)}>Speichern</button>
+                <button className="btn !py-1 !text-[11px]" onClick={() => setShowConfig(false)}>✕</button>
+              </div>
+              {serverUrl && <button className="text-[10px] text-white/30 hover:text-red-400 text-left px-1" onClick={() => saveServer('')}>Server trennen</button>}
+            </div>
+          ) : (
+            <button
+              onClick={() => { setServerInput(serverUrl); setShowConfig(true); }}
+              className="btn !p-1.5 w-full justify-center gap-1.5 text-[11px] text-white/35 hover:text-white/70">
+              {serverUrl
+                ? <><span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'ok' ? 'bg-green-400' : syncStatus === 'err' ? 'bg-red-400' : 'bg-white/30'}`}/>
+                    {syncing ? 'Sync…' : 'Server verbunden'}</>
+                : <><Icon.Globe className="w-3 h-3"/>Server verbinden</>}
+            </button>
+          )}
         </div>
       </div>
 
