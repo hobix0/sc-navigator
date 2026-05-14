@@ -1515,6 +1515,296 @@ function TopBar({ query, setQuery }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// ══════════════════════════════════════════════════════════════════════════════
+
+const NotesFSDB = {
+  DB: 'sc-nav-notes', STORE: 'handles',
+  open() {
+    return new Promise((res, rej) => {
+      const req = indexedDB.open(NotesFSDB.DB, 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(NotesFSDB.STORE);
+      req.onsuccess = e => res(e.target.result);
+      req.onerror = e => rej(e.target.error);
+    });
+  },
+  async get(key) {
+    const db = await NotesFSDB.open();
+    return new Promise((res, rej) => {
+      const req = db.transaction(NotesFSDB.STORE, 'readonly').objectStore(NotesFSDB.STORE).get(key);
+      req.onsuccess = () => res(req.result);
+      req.onerror = e => rej(e.target.error);
+    });
+  },
+  async set(key, value) {
+    const db = await NotesFSDB.open();
+    return new Promise((res, rej) => {
+      const req = db.transaction(NotesFSDB.STORE, 'readwrite').objectStore(NotesFSDB.STORE).put(value, key);
+      req.onsuccess = () => res();
+      req.onerror = e => rej(e.target.error);
+    });
+  },
+};
+
+function renderMarkdown(md) {
+  if (!md) return '';
+  // fenced code blocks first (preserve content)
+  const blocks = [];
+  let html = md.replace(/```([\w]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = blocks.length;
+    blocks.push(`<pre><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`);
+    return `\x00BLOCK${idx}\x00`;
+  });
+  html = html
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+    .replace(/^> (.+)$/gm,   '<blockquote>$1</blockquote>')
+    .replace(/^---+$/gm, '<hr>')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,  '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*([^*\n]+)\*\*/g,     '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g,         '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- (.+)$/gm,      '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm,  '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+    .replace(/<\/ul>\s*<ul>/g, '')
+    .replace(/\n\n+/g, '\n\n')
+    .split('\n\n').map(p => {
+      if (/^<(h[1-3]|hr|ul|blockquote|pre|\x00BLOCK)/.test(p.trim())) return p;
+      return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+    }).join('\n');
+  blocks.forEach((b, i) => { html = html.replace(`\x00BLOCK${i}\x00`, b); });
+  return html;
+}
+
+function NotesPanel() {
+  const [dirHandle, setDirHandle] = useState(null);
+  const [notes, setNotes]         = useState([]);
+  const [active, setActive]       = useState(null);
+  const [content, setContent]     = useState('');
+  const [preview, setPreview]     = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [dirty, setDirty]         = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [noApi, setNoApi]         = useState(false);
+
+  useEffect(() => {
+    if (!window.showDirectoryPicker) { setNoApi(true); setLoading(false); return; }
+    NotesFSDB.get('notesDir').then(async handle => {
+      if (handle) {
+        try {
+          const perm = await handle.queryPermission({ mode: 'readwrite' });
+          if (perm === 'granted') {
+            setDirHandle(handle);
+            const list = await loadList(handle);
+            if (list.length) await openNote(handle, list[0]);
+          }
+        } catch {}
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  async function loadList(handle) {
+    const list = [];
+    for await (const [name, entry] of handle.entries()) {
+      if (entry.kind === 'file' && name.endsWith('.md')) list.push(name);
+    }
+    list.sort();
+    setNotes(list);
+    return list;
+  }
+
+  async function pickDirectory() {
+    try {
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await handle.getDirectoryHandle('Images', { create: true });
+      await NotesFSDB.set('notesDir', handle);
+      setDirHandle(handle);
+      const list = await loadList(handle);
+      if (list.length) await openNote(handle, list[0]);
+      else setLoading(false);
+    } catch {}
+  }
+
+  async function openNote(handle, name) {
+    try {
+      const fh   = await handle.getFileHandle(name);
+      const file = await fh.getFile();
+      const text = await file.text();
+      setActive(name);
+      setContent(text);
+      setDirty(false);
+    } catch {}
+  }
+
+  async function saveNote() {
+    if (!dirHandle || !active) return;
+    setSaving(true);
+    try {
+      const fh = await dirHandle.getFileHandle(active, { create: true });
+      const w  = await fh.createWritable();
+      await w.write(content);
+      await w.close();
+      setDirty(false);
+    } finally { setSaving(false); }
+  }
+
+  async function createNote() {
+    if (!dirHandle) return;
+    const title = prompt('Titel der neuen Notiz:');
+    if (!title) return;
+    const slug = title.trim().replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '').replace(/\s+/g, '-');
+    const name = slug + '.md';
+    const initial = `# ${title}\n\n`;
+    const fh = await dirHandle.getFileHandle(name, { create: true });
+    const w  = await fh.createWritable();
+    await w.write(initial);
+    await w.close();
+    await loadList(dirHandle);
+    setActive(name);
+    setContent(initial);
+    setDirty(false);
+  }
+
+  async function deleteNote() {
+    if (!dirHandle || !active) return;
+    if (!confirm(`Notiz "${active.replace(/\.md$/, '')}" löschen?`)) return;
+    await dirHandle.removeEntry(active);
+    const list = await loadList(dirHandle);
+    if (list.length) await openNote(dirHandle, list[0]);
+    else { setActive(null); setContent(''); }
+  }
+
+  async function insertImage() {
+    if (!dirHandle) return;
+    try {
+      const [fh]   = await window.showOpenFilePicker({ types: [{ description: 'Bilder', accept: { 'image/*': ['.png','.jpg','.jpeg','.gif','.webp'] } }] });
+      const file   = await fh.getFile();
+      const imgDir = await dirHandle.getDirectoryHandle('Images', { create: true });
+      const dest   = await imgDir.getFileHandle(file.name, { create: true });
+      const w      = await dest.createWritable();
+      await w.write(await file.arrayBuffer());
+      await w.close();
+      const md = `\n![${file.name}](Notes/Images/${file.name})\n`;
+      setContent(c => c + md);
+      setDirty(true);
+    } catch {}
+  }
+
+  const noteName = n => n.replace(/\.md$/, '').replace(/-/g, ' ');
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20 cap">Lade…</div>
+  );
+
+  if (noApi) return (
+    <Panel title="Notizen">
+      <p className="text-white/60 text-[13px] py-4">
+        Dein Browser unterstützt die File System Access API nicht. Bitte Chrome oder Edge verwenden.
+      </p>
+    </Panel>
+  );
+
+  if (!dirHandle) return (
+    <Panel title="Notizen" sub="Markdown-Notizen lokal speichern">
+      <div className="flex flex-col items-center gap-5 py-12 text-center">
+        <Icon.Note className="w-14 h-14 text-white/15" />
+        <div className="max-w-[360px]">
+          <p className="text-[14px] text-white/75 mb-1 font-medium">Notes-Ordner verknüpfen</p>
+          <p className="cap">Wähle den <code className="font-mono">Notes/</code>-Ordner im Projektverzeichnis — Notizen werden dort als <code className="font-mono">.md</code>-Dateien gespeichert, Bilder in <code className="font-mono">Notes/Images/</code>.</p>
+        </div>
+        <button className="btn btn-accent" onClick={pickDirectory}>
+          <Icon.Note className="w-4 h-4" />
+          Ordner auswählen
+        </button>
+      </div>
+    </Panel>
+  );
+
+  return (
+    <div className="flex gap-4" style={{ height: 'calc(100vh - 180px)', minHeight: '480px' }}>
+      {/* Note list */}
+      <div className="glass w-[200px] flex-none flex flex-col">
+        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.06]">
+          <span className="text-[12px] font-semibold text-white/80">Notizen</span>
+          <button className="btn !p-1" title="Neue Notiz" onClick={createNote}>
+            <Icon.Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto py-1">
+          {notes.length === 0 && (
+            <p className="cap text-center px-4 py-6">Noch keine Notizen. Klicke + um eine zu erstellen.</p>
+          )}
+          {notes.map(name => (
+            <button key={name} onClick={() => openNote(dirHandle, name)}
+              className={`w-full text-left flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors hover:bg-white/[0.04] ${name === active ? 'bg-white/[0.07] text-white' : 'text-white/60'}`}>
+              <Icon.Doc className="w-3.5 h-3.5 flex-none opacity-50" />
+              <span className="truncate">{noteName(name)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Editor / Preview */}
+      <div className="glass flex-1 flex flex-col min-w-0">
+        {active ? (
+          <>
+            {/* Toolbar */}
+            <div className="flex items-center gap-1.5 px-4 py-2 border-b border-white/[0.06] flex-none">
+              <span className="text-[13px] font-semibold flex-1 truncate">
+                {noteName(active)}
+                {dirty && <span className="ml-1.5 text-[10px] text-white/35" title="Ungespeicherte Änderungen">●</span>}
+              </span>
+              <button className="btn !p-1.5" onClick={insertImage} title="Bild einfügen (in Notes/Images/ kopieren)">
+                <Icon.Image className="w-3.5 h-3.5" />
+              </button>
+              <button className={`btn !p-1.5 ${preview ? 'btn-accent' : ''}`} onClick={() => setPreview(v => !v)} title={preview ? 'Editor anzeigen' : 'Vorschau'}>
+                <Icon.Eye className="w-3.5 h-3.5" />
+              </button>
+              <button className="btn !p-1.5 hover:text-red-400" onClick={deleteNote} title="Notiz löschen">
+                <Icon.Trash className="w-3.5 h-3.5" />
+              </button>
+              <button className={`btn !px-3 !py-1.5 text-[12px] ${dirty ? 'btn-accent' : ''}`}
+                onClick={saveNote} disabled={saving || !dirty}>
+                {saving ? '…' : 'Speichern'}
+              </button>
+            </div>
+
+            {/* Content */}
+            {preview ? (
+              <div className="flex-1 overflow-y-auto px-7 py-5 prose-notes"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+            ) : (
+              <textarea
+                className="flex-1 w-full bg-transparent resize-none px-7 py-5 text-[13px] font-mono text-white/85 focus:outline-none leading-relaxed"
+                value={content}
+                spellCheck={false}
+                placeholder="Markdown eingeben…"
+                onChange={e => { setContent(e.target.value); setDirty(true); }}
+                onKeyDown={e => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNote(); }
+                }}
+              />
+            )}
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <Icon.Note className="w-10 h-10 text-white/15 mx-auto mb-3" />
+              <p className="cap">Notiz auswählen oder neue erstellen</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Sidebar — linke Navigation
 // Aktiv: Übersicht. Andere Items sind vorbereitet aber noch ausgegraut.
 function Sidebar({ section, setSection }) {
@@ -1522,6 +1812,7 @@ function Sidebar({ section, setSection }) {
     { id: 'status',  label: 'Übersicht',  icon: 'Status',  active: true  },
     { id: 'links',   label: 'Quick Links',icon: 'Book',    active: true  },
     { id: 'items',   label: 'Item-DB',    icon: 'Cube',    active: true  },
+    { id: 'notes',   label: 'Notizen',    icon: 'Note',    active: true  },
     { id: 'tools',   label: 'Tools',      icon: 'Tools',   active: false },
     { id: 'trade',   label: 'Trade',      icon: 'Trade',   active: false },
     { id: 'mining',  label: 'Mining',     icon: 'Mining',  active: false },
@@ -1661,6 +1952,20 @@ function App() {
                 </p>
               </div>
               <ItemDatabase />
+            </div>
+          )}
+
+          {/* ── Tab: Notizen ──────────────────────────────────────────── */}
+          {section === 'notes' && (
+            <div id="notes">
+              <div className="mb-6">
+                <div className="text-[12px] text-white/45 mb-2">Persönliche Notizen</div>
+                <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight">Notizen</h1>
+                <p className="text-white/55 text-[14px] mt-2">
+                  Markdown-Notizen mit Bildunterstützung — lokal gespeichert im <code className="font-mono text-[13px]">Notes/</code>-Ordner.
+                </p>
+              </div>
+              <NotesPanel />
             </div>
           )}
 
