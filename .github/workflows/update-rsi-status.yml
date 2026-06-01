@@ -1,28 +1,10 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# update-rsi-status.yml
-#
-# Was dieser Workflow macht:
-#   Alle 5 Minuten wird die RSI-Statuspage-API serverseitig abgerufen
-#   (GitHub-Server haben keine CORS-Einschränkungen) und das Ergebnis
-#   als rsi-status.json im Repo gespeichert.
-#
-#   Das Frontend liest dann ./rsi-status.json von der eigenen Domain —
-#   kein CORS, kein Proxy, keine externen Dienste nötig.
-#
-# Ablauf:
-#   GitHub Action (Server) → RSI API → rsi-status.json → GitHub Pages → Browser
-# ──────────────────────────────────────────────────────────────────────────────
-
 name: Update RSI Status Cache
 
 on:
-  # Alle 5 Minuten automatisch (GitHub Actions Minimum ist 5 Minuten)
   schedule:
     - cron: '*/5 * * * *'
-  # Manuell auslösbar über GitHub → Actions → "Run workflow"
   workflow_dispatch:
 
-# Schreibrechte damit der Bot den Commit pushen kann
 permissions:
   contents: write
 
@@ -33,30 +15,38 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v4
 
-      - name: RSI Status API abrufen und speichern
+      - name: RSI Status API abrufen
         run: |
-          # RSI Statuspage API abrufen — serverseitig, kein CORS-Problem
-          curl -s \
-            --max-time 15 \
-            --fail \
-            "https://status.robertsspaceindustries.com/api/v2/summary.json" \
-            > rsi-status.json
+          echo "→ Fetching RSI Status..."
 
-          # Zeitstempel anhängen damit das Frontend weiß wann zuletzt gecacht wurde
-          # Liest die JSON, fügt fetched_at hinzu und überschreibt die Datei
+          HTTP=$(curl -s -o rsi-status-raw.json -w "%{http_code}" \
+            --max-time 15 \
+            "https://status.robertsspaceindustries.com/api/v2/summary.json")
+
+          echo "  HTTP Status: $HTTP"
+
+          if [ "$HTTP" != "200" ]; then
+            echo "  Fehler: HTTP $HTTP"
+            cat rsi-status-raw.json
+            exit 1
+          fi
+
+          # Zeitstempel hinzufügen
           node -e "
             const fs = require('fs');
-            const data = JSON.parse(fs.readFileSync('rsi-status.json', 'utf8'));
+            const data = JSON.parse(fs.readFileSync('rsi-status-raw.json', 'utf8'));
             data._cached_at = new Date().toISOString();
             fs.writeFileSync('rsi-status.json', JSON.stringify(data, null, 2));
-            console.log('Status gecacht:', data.status?.description, '@', data._cached_at);
+            console.log('✓ Status:', data.status?.description, '@', data._cached_at);
           "
 
-      - name: Änderungen committen und pushen
+          rm rsi-status-raw.json
+
+      - name: Änderungen committen
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add rsi-status.json
-          # Nur committen wenn sich die Datei geändert hat
-          git diff --staged --quiet || git commit -m "chore: update RSI status cache [skip ci]"
-          git push
+          git diff --staged --quiet \
+            && echo "Keine Änderungen." \
+            || (git commit -m "chore: update RSI status cache [skip ci]" && git push)
